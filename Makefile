@@ -1,8 +1,11 @@
 build:
 	go build -o bin/service .
 
+test:
+	go test -v ./...
+
 docker-build:
-	docker build -t registry.gitlab.com/undercast/media_service .
+	docker build -t ghcr.io/dir01/mediary:alpha .
 
 docker-push:
-	docker push registry.gitlab.com/undercast/media_service
+	docker push ghcr.io/dir01/mediary:alpha
