@@ -14,3 +14,9 @@ jobs:
     uses: ./.github/workflows/do_build_image.yml
     secrets:
       GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+  deploy:
+    name: Deploy new version
+    needs: image
+    uses: ./.github/workflows/do_deploy.yml
+    secrets:
+      KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
