@@ -20,5 +20,7 @@ func headers(w http.ResponseWriter, req *http.Request) {
 func main() {
 	http.HandleFunc("/hello", hello)
 	http.HandleFunc("/headers", headers)
-	http.ListenAndServe("0.0.0.0:80", nil)
+	addr := "0.0.0.0:80"
+	fmt.Println("Starting to listen on " + addr)
+	fmt.Println(http.ListenAndServe(addr, nil))
 }
