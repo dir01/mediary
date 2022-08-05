@@ -13,9 +13,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: kubectl apply
+      # https://github.com/actions-hub/kubectl
+      - name: Replace deployment
         uses: actions-hub/kubectl@master
         env:
           KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
         with:
           args: replace -f .k8s/*.yaml --force
+
+      # https://github.com/actions-hub/kubectl
+      - name: Expose deployment
+        uses: actions-hub/kubectl@master
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+        with:
+          args: expose deployment mediary-deployment --port=8080 --target-port=80 --name=mediary-service --type=LoadBalancer
+        continue-on-error: true
