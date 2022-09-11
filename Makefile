@@ -1,8 +1,11 @@
 build:
-	go build -o bin/service .
+	go build -o bin/server ./cmd/server
 
 test:
-	go test -v ./...
+	go test -v ./... -coverprofile=coverage.out
+
+cover:
+	go tool cover -html=coverage.out
 
 run:
 	go run ./cmd/server

@@ -3,17 +3,56 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 
-	"github.com/dir01/mediary"
+	"github.com/dir01/mediary/downloader"
+	"github.com/dir01/mediary/downloader/torrent"
+	mediary_http "github.com/dir01/mediary/http"
+	"github.com/dir01/mediary/media_processor"
+	"github.com/dir01/mediary/service"
+	"github.com/dir01/mediary/service/jobs_queue"
+	"github.com/dir01/mediary/storage"
+	"github.com/go-redis/redis"
+	"go.uber.org/zap"
 )
 
 func main() {
-	torrentDownloader, err := mediary.NewTorrentDownloader()
+	logger, err := zap.NewDevelopment()
 	if err != nil {
-		log.Fatalf("error creating torrent downloader: %w", err)
+		log.Fatalf("error initializing logger: %v", err)
 	}
-	service := mediary.NewService([]mediary.Downloader{torrentDownloader}, mediary.NewStorageInMemory())
-	mux := mediary.PrepareHTTPServerMux(service)
+	defer func() { _ = logger.Sync() }()
+
+	// torrentDownloader downloads torrents
+	torrentDownloader, err := torrent.NewTorrentDownloader(os.TempDir(), logger)
+	if err != nil {
+		log.Fatalf("error creating torrent downloader: %v", err)
+	}
+
+	// downloader is composite downloader: it can download anything, as long as one of its minions knows how to
+	dwn := downloader.NewDownloader([]service.Downloader{torrentDownloader})
+
+	// redisClient will be used both for storage and queue, mostly because I've found some cloud redis with a free tier
+	opt, _ := redis.ParseURL("redis://localhost:6379")
+	redisClient := redis.NewClient(opt)
+	defer func() { _ = redisClient.Close() }()
+
+	queue, err := jobs_queue.NewRedisJobsQueue(redisClient, 10, "mediary:")
+	if err != nil {
+		log.Fatalf("error initializing redis jobs queue: %v", err)
+	}
+
+	store := storage.NewStorageInMemory()
+
+	mediaProc, err := media_processor.NewFFMpegMediaProcessor(logger)
+	if err != nil {
+		log.Fatalf("error initializing media processor: %v", err)
+	}
+
+	svc := service.NewService(dwn, store, queue, mediaProc, logger)
+
+	mux := mediary_http.PrepareHTTPServerMux(svc)
+
 	addr := "0.0.0.0:8080"
 	log.Printf("Starting to listen on %s", addr)
 	log.Println(http.ListenAndServe(addr, mux))

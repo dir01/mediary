@@ -1,10 +1,12 @@
-package mediary
+package service
 
 import (
 	"context"
 	"fmt"
 	"log"
 )
+
+var errUrlNotSupported = fmt.Errorf("url not supported")
 
 type Metadata struct {
 	URL   string         `json:"url"`
@@ -18,23 +20,22 @@ type FileMetadata struct {
 }
 
 func (svc *Service) GetMetadata(ctx context.Context, url string) (*Metadata, error) {
-	if metadata, err := svc.Storage.GetMetadata(ctx, url); err != nil {
-		log.Printf("error getting metadata from storage: %v, will continue'", err)
+	if metadata, err := svc.storage.GetMetadata(ctx, url); err != nil {
+		log.Printf("error getting metadata from storage: %v, will continue", err)
 	} else if metadata != nil {
 		return metadata, nil
 	}
 
-	downloader, err := svc.getDownloader(url)
-	if err != nil {
-		return nil, err
+	if !svc.downloader.AcceptsURL(url) {
+		return nil, errUrlNotSupported
 	}
 
-	metadata, err := downloader.GetMetadata(ctx, url)
+	metadata, err := svc.downloader.GetMetadata(ctx, url)
 	if err != nil {
 		return nil, fmt.Errorf("error getting metadata from downloader: %w", err)
 	}
 
-	if err := svc.Storage.SaveMetadata(ctx, url, metadata); err != nil {
+	if err := svc.storage.SaveMetadata(ctx, metadata); err != nil {
 		fmt.Printf("error saving metadata to storage: %v, will continue", err)
 	}
 

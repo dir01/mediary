@@ -1,4 +1,4 @@
-package mediary_test
+package service_test
 
 import (
 	"context"
@@ -6,25 +6,29 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/dir01/mediary"
-	"github.com/dir01/mediary/mocks"
+	"github.com/dir01/mediary/downloader"
+	"github.com/dir01/mediary/service"
+	"github.com/dir01/mediary/service/mocks"
 	"github.com/gojuno/minimock/v3"
+	"go.uber.org/zap"
 )
+
+var logger, _ = zap.NewDevelopment()
 
 func TestGetMetadata(t *testing.T) {
 	type testCase struct {
 		Name string
 
-		StorageGetResponse *mediary.Metadata
+		StorageGetResponse *service.Metadata
 		StorageGetError    error
 
 		DownloaderNotFound bool
-		DownloaderResponse *mediary.Metadata
+		DownloaderResponse *service.Metadata
 		DownloaderError    error
 
 		StorageSaveResponse error
 
-		ExpectedResponse *mediary.Metadata
+		ExpectedResponse *service.Metadata
 		ExpectedError    error
 	}
 
@@ -34,34 +38,34 @@ func TestGetMetadata(t *testing.T) {
 	for _, tc := range []testCase{
 		{
 			Name:               "metadata is found in storage",
-			StorageGetResponse: &mediary.Metadata{Name: "some-name"},
-			ExpectedResponse:   &mediary.Metadata{Name: "some-name"},
+			StorageGetResponse: &service.Metadata{Name: "some-name"},
+			ExpectedResponse:   &service.Metadata{Name: "some-name"},
 		},
 		{
 			Name:               "storage get returns nil, downloader responds",
 			StorageGetResponse: nil,
-			DownloaderResponse: &mediary.Metadata{Name: "some-name"},
-			ExpectedResponse:   &mediary.Metadata{Name: "some-name"},
+			DownloaderResponse: &service.Metadata{Name: "some-name"},
+			ExpectedResponse:   &service.Metadata{Name: "some-name"},
 		},
 		{
 			Name:               "storage get errors, downloader responds",
 			StorageGetError:    fmt.Errorf("some-error"),
-			DownloaderResponse: &mediary.Metadata{Name: "some-name"},
-			ExpectedResponse:   &mediary.Metadata{Name: "some-name"},
+			DownloaderResponse: &service.Metadata{Name: "some-name"},
+			ExpectedResponse:   &service.Metadata{Name: "some-name"},
 		},
 		{
 			Name:                "storage get errors, downloader responds, storage set errors",
 			StorageGetError:     fmt.Errorf("some-error"),
-			DownloaderResponse:  &mediary.Metadata{Name: "some-name"},
+			DownloaderResponse:  &service.Metadata{Name: "some-name"},
 			StorageSaveResponse: fmt.Errorf("storage-save-error"),
-			ExpectedResponse:    &mediary.Metadata{Name: "some-name"},
+			ExpectedResponse:    &service.Metadata{Name: "some-name"},
 		},
 		{
 			Name:               "storage get returns nil, downloader does not match",
 			StorageGetResponse: nil,
 			DownloaderNotFound: true,
 			ExpectedResponse:   nil,
-			ExpectedError:      fmt.Errorf("no downloader found for url: %s", url),
+			ExpectedError:      downloader.ErrUrlNotSupported,
 		},
 		{
 			Name:            "downloader errors",
@@ -71,27 +75,31 @@ func TestGetMetadata(t *testing.T) {
 	} {
 		t.Run(tc.Name, func(t *testing.T) {
 			mc := minimock.NewController(t)
-			downloader := mocks.NewDownloaderMock(mc)
+			dwn := mocks.NewDownloaderMock(mc)
 			storage := mocks.NewStorageMock(mc)
-			service := mediary.NewService([]mediary.Downloader{downloader}, storage)
+			queue := mocks.NewJobsQueueMock(mc)
+			queue.
+				SubscribeMock.Set(func(f1 func(jobId string) error) {}).
+				PublishMock.Set(func(ctx context.Context, jobId string) (err error) { return nil })
+			svc := service.NewService(dwn, storage, queue, nil, logger)
 
 			storage.GetMetadataMock.
 				Expect(someContext, url).
 				Return(tc.StorageGetResponse, tc.StorageGetError)
 
 			if tc.DownloaderNotFound {
-				downloader.MatchesMock.Return(false)
+				dwn.AcceptsURLMock.Return(false)
 			} else {
-				downloader.MatchesMock.Return(true)
+				dwn.AcceptsURLMock.Return(true)
 			}
 
-			downloader.GetMetadataMock.
+			dwn.GetMetadataMock.
 				Expect(someContext, url).
 				Return(tc.DownloaderResponse, tc.DownloaderError)
 
 			storage.SaveMetadataMock.Return(tc.StorageSaveResponse)
 
-			result, err := service.GetMetadata(someContext, url)
+			result, err := svc.GetMetadata(someContext, url)
 
 			if tc.ExpectedError != nil {
 				if err == nil || err.Error() != tc.ExpectedError.Error() {

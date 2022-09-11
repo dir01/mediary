@@ -1,3 +1,4 @@
 bin/
 .vscode/
 .torrent.db*
+coverage.out
