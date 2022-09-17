@@ -11,6 +11,7 @@ func NewService(
 	storage Storage,
 	jobsQueue JobsQueue,
 	mediaProcessor MediaProcessor,
+	uploader Uploader,
 	logger *zap.Logger,
 ) *Service {
 	svc := &Service{
@@ -18,6 +19,7 @@ func NewService(
 		storage:        storage,
 		jobsQueue:      jobsQueue,
 		mediaProcessor: mediaProcessor,
+		uploader:       uploader,
 		log:            logger,
 	}
 	jobsQueue.Subscribe(svc.onPublishedJob)
@@ -29,6 +31,7 @@ type Service struct {
 	storage        Storage
 	jobsQueue      JobsQueue
 	mediaProcessor MediaProcessor
+	uploader       Uploader
 	log            *zap.Logger
 }
 
@@ -62,4 +65,9 @@ type Storage interface {
 //go:generate minimock -i MediaProcessor -o ./mocks/media_processor_mock.go -g
 type MediaProcessor interface {
 	Concatenate(ctx context.Context, filepaths []string, audioCodec string) (resultFilepath string, err error)
+}
+
+//go:generate minimock -i Uploader -o ./mocks/uploader_mock.go -g
+type Uploader interface {
+	Upload(ctx context.Context, filepath string, url string) (err error)
 }

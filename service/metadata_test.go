@@ -81,7 +81,7 @@ func TestGetMetadata(t *testing.T) {
 			queue.
 				SubscribeMock.Set(func(f1 func(jobId string) error) {}).
 				PublishMock.Set(func(ctx context.Context, jobId string) (err error) { return nil })
-			svc := service.NewService(dwn, storage, queue, nil, logger)
+			svc := service.NewService(dwn, storage, queue, nil, nil, logger)
 
 			storage.GetMetadataMock.
 				Expect(someContext, url).

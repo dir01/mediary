@@ -12,6 +12,7 @@ import (
 	"github.com/dir01/mediary/service"
 	"github.com/dir01/mediary/service/jobs_queue"
 	"github.com/dir01/mediary/storage"
+	"github.com/dir01/mediary/uploader"
 	"github.com/go-redis/redis"
 	"go.uber.org/zap"
 )
@@ -49,7 +50,12 @@ func main() {
 		log.Fatalf("error initializing media processor: %v", err)
 	}
 
-	svc := service.NewService(dwn, store, queue, mediaProc, logger)
+	upl, err := uploader.New()
+	if err != nil {
+		log.Fatalf("error initializing uploader: %v", err)
+	}
+
+	svc := service.NewService(dwn, store, queue, mediaProc, upl, logger)
 
 	mux := mediary_http.PrepareHTTPServerMux(svc)
 

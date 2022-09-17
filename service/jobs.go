@@ -28,11 +28,15 @@ const (
 
 type JobState struct {
 	JobParams
-	ID    string `json:"id"`
-	State string `json:"state"`
+	ID            string `json:"id"`
+	DisplayStatus string `json:"status"`
 }
 
-const StateCreated = "created"
+const StatusCreated = "created"
+const StatusDownloading = "downloading"
+const StatusProcessing = "processing"
+const StatusUploading = "uploading"
+const StatusComplete = "complete"
 
 // CreateJob creates an entry for job in storage and enqueues it for processing in background
 func (svc *Service) CreateJob(ctx context.Context, params *JobParams) (*JobState, error) {
@@ -43,9 +47,9 @@ func (svc *Service) CreateJob(ctx context.Context, params *JobParams) (*JobState
 		zap.Any("params", params),
 	)
 	jobState := &JobState{
-		JobParams: *params,
-		ID:        jobID,
-		State:     StateCreated,
+		JobParams:     *params,
+		ID:            jobID,
+		DisplayStatus: StatusCreated,
 	}
 
 	// rough validation of job params
@@ -73,7 +77,11 @@ func (svc *Service) CreateJob(ctx context.Context, params *JobParams) (*JobState
 		return nil, err
 	}
 
-	return nil, nil
+	return jobState, nil
+}
+
+func (svc *Service) GetJob(ctx context.Context, id string) (*JobState, error) {
+	return svc.storage.GetJob(ctx, id)
 }
 
 // onPublishedJob is a callback that is invoked when a job is published to the jobs queue

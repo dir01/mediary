@@ -12,6 +12,7 @@ func (svc *Service) newConcatenateFlow(jobID string, state *JobState) (func() er
 	type Params struct {
 		Filepaths  []string `json:"filepaths"`
 		AudioCodec string   `json:"audioCodec"`
+		UploadURL  string   `json:"uploadUrl"`
 	}
 	params := Params{}
 	err := mapToStruct(state.Params, &params)
@@ -33,6 +34,17 @@ func (svc *Service) newConcatenateFlow(jobID string, state *JobState) (func() er
 			return fmt.Errorf("failed to get job: %w", err)
 		}
 
+		updateJobStatus := func(status string) {
+			job.DisplayStatus = status
+			if err = svc.storage.SaveJob(ctx, job); err != nil {
+				svc.log.Error(
+					"failed to save job state, proceeding",
+					zap.String("jobID", jobID), zap.String("state", job.DisplayStatus), zap.Error(err),
+				)
+			}
+		}
+
+		updateJobStatus(StatusDownloading)
 		svc.log.Debug("starting download", zap.String("jobID", jobID))
 		ctx, cancel = context.WithTimeout(context.Background(), 1*time.Hour)
 		defer cancel()
@@ -43,6 +55,7 @@ func (svc *Service) newConcatenateFlow(jobID string, state *JobState) (func() er
 			return fmt.Errorf("failed to download files: %w", err)
 		}
 
+		updateJobStatus(StatusProcessing)
 		// translate requested relative filepaths into actual fs filepaths while preserving order
 		fsFilepaths := make([]string, 0, len(filepathsMap))
 		for _, filepath := range params.Filepaths {
@@ -53,9 +66,28 @@ func (svc *Service) newConcatenateFlow(jobID string, state *JobState) (func() er
 		ctx, cancel = context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 		resultFilepath, err := svc.mediaProcessor.Concatenate(ctx, fsFilepaths, params.AudioCodec)
+		if err != nil {
+			svc.log.Error("failed to concatenate files", zap.String("jobID", jobID), zap.Error(err))
+			return fmt.Errorf("failed to concatenate files: %w", err)
+		}
 
+		updateJobStatus(StatusUploading)
 		svc.log.Debug("starting upload", zap.String("jobID", jobID))
-		fmt.Println(resultFilepath)
+		ctx, cancel = context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+		err = svc.uploader.Upload(ctx, resultFilepath, params.UploadURL)
+		if err != nil {
+			svc.log.Error(
+				"failed to upload result",
+				zap.String("jobID", jobID),
+				zap.String("localFilename", resultFilepath),
+				zap.Error(err),
+			)
+			return fmt.Errorf("failed to upload result: %w", err)
+		}
+
+		updateJobStatus(StatusComplete)
+		svc.log.Debug("job complete", zap.String("jobID", jobID))
 		return nil
 	}, nil
 }
