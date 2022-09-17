@@ -30,7 +30,7 @@ func main() {
 		log.Fatalf("error creating torrent downloader: %v", err)
 	}
 
-	// downloader is composite downloader: it can download anything, as long as one of its minions knows how to
+	// dwn is a composite downloader: it can download anything, as long as one of its minions knows how to
 	dwn := downloader.NewDownloader([]service.Downloader{torrentDownloader})
 
 	// redisClient will be used both for storage and queue, mostly because I've found some cloud redis with a free tier

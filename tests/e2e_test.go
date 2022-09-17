@@ -1,10 +1,12 @@
+//go:build gen_docs
+// +build gen_docs
+
 package tests
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,8 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/dir01/mediary/downloader/torrent"
 	http2 "github.com/dir01/mediary/http"
 	"github.com/dir01/mediary/media_processor"
@@ -33,7 +35,8 @@ const (
 )
 
 func TestApplication(t *testing.T) {
-	s3Client, err := getS3Client(context.Background(), testBucketName)
+	s3Client, teardownS3, err := getS3Client(context.Background(), testBucketName)
+	defer teardownS3()
 	if err != nil {
 		t.Fatalf("error creating s3 client: %v", err)
 	}
@@ -43,7 +46,8 @@ func TestApplication(t *testing.T) {
 		t.Fatalf("error creating torrent downloader: %v", err)
 	}
 
-	redisURL, err := getFakeRedisURL(context.Background())
+	redisURL, teardownRedis, err := getFakeRedisURL(context.Background())
+	defer teardownRedis()
 	if err != nil {
 		t.Fatalf("error getting redis url: %v", err)
 	}
@@ -225,20 +229,16 @@ POST to '''/jobs''' will schedule for background execution a process of download
 Only required parameters are '''url''' and '''type'''. '''type''' signifies the type of operation to be performed. 
 Each operation can require some additional parameters, passed as '''params'''. For example, '''concatenate''' job
 requires a list of files to be concatenated and, optionally, an '''audioCoded''' to be used for the output file.`)
-		req, _ := s3Client.PutObjectRequest(&s3.PutObjectInput{
-			Bucket: aws.String(testBucketName),
-			Key:    aws.String("/some-file.ext"),
-		})
-		urlStr, err := req.Presign(90 * time.Minute)
-		if err != nil {
-			t.Errorf("Failed to sign request: %v", err)
-		}
 
-		//if err = UploadFile(urlStr); err != nil {
-		//	t.Fatalf("Failed to upload file: %v", err)
-		//}
-		//fmt.Println("done")
-		//return
+		presignClient := s3.NewPresignClient(s3Client)
+		presignResult, err := presignClient.PresignPutObject(context.TODO(), &s3.PutObjectInput{
+			Bucket: aws.String(testBucketName),
+			Key:    aws.String("some-path/some-file.some-ext"),
+		})
+		if err != nil {
+			t.Fatal(fmt.Errorf("failed to presign: %w", err))
+		}
+		urlStr := presignResult.URL
 
 		payload := strings.NewReader(fmt.Sprintf(`{
 			"url": "%s",
@@ -315,45 +315,4 @@ To check the status of the job, you can use the '''/jobs/:id''' endpoint.`)
 			}
 		}
 	})
-}
-
-func UploadFile(url string) error {
-	const filepath = "/var/folders/28/6zntdkl10655__7b7_d5yp2w0000gp/T/1586302608.mp3"
-	file, err := os.Open(filepath)
-	if err != nil {
-		return fmt.Errorf("error opening file: %w", err)
-	}
-	defer file.Close()
-
-	req, err := http.NewRequest("PUT", url, file)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	fileStat, err := os.Stat(filepath)
-	if err != nil {
-		return fmt.Errorf("failed to get file stat: %w", err)
-	}
-	req.ContentLength = fileStat.Size()
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed sending request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		bytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return fmt.Errorf("unexpected status code: %d. failed reading body: %w", resp.StatusCode, err)
-		}
-		return fmt.Errorf("unexpected status code: %d. body: %s", resp.StatusCode, string(bytes))
-	}
-
-	fmt.Println("uploaded")
-	bytes, _ := io.ReadAll(resp.Body)
-	fmt.Println(resp.StatusCode, string(bytes))
-	fmt.Println("printed body")
-
-	return nil
 }

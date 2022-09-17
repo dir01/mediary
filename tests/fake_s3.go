@@ -3,24 +3,24 @@ package tests
 import (
 	"context"
 	"fmt"
-	"time"
+	"net/http"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/docker/go-connections/nat"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func getS3Client(ctx context.Context, bucketName string) (*s3.S3, error) {
-	var targetPort nat.Port = "9090"
-
+func getS3Client(ctx context.Context, bucketName string) (client *s3.Client, teardown func(), err error) {
 	req := testcontainers.ContainerRequest{
-		Image:        "adobe/s3mock",
-		ExposedPorts: []string{fmt.Sprintf("%s/tcp", targetPort)},
-		Env:          map[string]string{"debug": "true", "trace": "true", "initialBuckets": bucketName, "root": "/tmp/s3mock"},
-		WaitingFor:   wait.ForListeningPort(targetPort).WithStartupTimeout(5 * time.Minute),
+		Image:        "localstack/localstack:latest",
+		ExposedPorts: []string{"4566/tcp"},
+		NetworkMode:  testcontainers.Bridge,
+		WaitingFor: wait.ForHTTP("/").WithPort("4566/tcp").WithStatusCodeMatcher(func(status int) bool {
+			return status == http.StatusOK
+		}),
 	}
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -28,24 +28,83 @@ func getS3Client(ctx context.Context, bucketName string) (*s3.S3, error) {
 		Started:          true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to start container: %w", err)
+		return nil, func() {}, fmt.Errorf("error creating container: %w", err)
 	}
+	teardown = func() { container.Terminate(ctx) }
 
-	ip, err := container.Host(ctx)
+	host, err := container.Host(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get container host: %w", err)
+		return nil, teardown, err
 	}
 
-	port, err := container.MappedPort(ctx, targetPort)
+	port, err := container.MappedPort(ctx, "4566/tcp")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get container port: %w", err)
+		return nil, teardown, err
 	}
 
-	sess, err := session.NewSession(&aws.Config{
-		Region:   aws.String("eu-central-1"),
-		Endpoint: aws.String(fmt.Sprintf("http://%s:%s", ip, port.Port())),
+	endpoint := fmt.Sprintf("http://%s:%s", host, port.Port())
+
+	cfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithRegion("us-east-1"),
+		config.WithEndpointResolver(aws.EndpointResolverFunc(
+			func(service, region string) (aws.Endpoint, error) {
+				return aws.Endpoint{URL: endpoint}, nil
+			})),
+		config.WithCredentialsProvider(credentials.StaticCredentialsProvider{
+			Value: aws.Credentials{
+				AccessKeyID: "dummy", SecretAccessKey: "dummy", SessionToken: "dummy",
+				Source: "Hard-coded credentials; values are irrelevant for local environment",
+			},
+		}),
+	)
+
+	if err != nil {
+		return nil, teardown, err
+	}
+	client = s3.NewFromConfig(cfg, func(o *s3.Options) {
+		o.UsePathStyle = true
 	})
-	s3Client := s3.New(sess, aws.NewConfig().WithS3ForcePathStyle(true))
 
-	return s3Client, nil
+	if _, err = client.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: aws.String(bucketName)}); err != nil {
+		return nil, teardown, err
+	}
+
+	return client, teardown, nil
 }
+
+//func getS3Client(ctx context.Context, bucketName string) (*s3.S3, error) {
+//	var targetPort nat.Port = "9090"
+//
+//	req := testcontainers.ContainerRequest{
+//		Image:        "adobe/s3mock",
+//		ExposedPorts: []string{fmt.Sprintf("%s/tcp", targetPort)},
+//		Env:          map[string]string{"debug": "true", "trace": "true", "initialBuckets": bucketName, "root": "/tmp/s3mock"},
+//		WaitingFor:   wait.ForListeningPort(targetPort).WithStartupTimeout(5 * time.Minute),
+//	}
+//
+//	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+//		ContainerRequest: req,
+//		Started:          true,
+//	})
+//	if err != nil {
+//		return nil, fmt.Errorf("failed to start container: %w", err)
+//	}
+//
+//	ip, err := container.Host(ctx)
+//	if err != nil {
+//		return nil, fmt.Errorf("failed to get container host: %w", err)
+//	}
+//
+//	port, err := container.MappedPort(ctx, targetPort)
+//	if err != nil {
+//		return nil, fmt.Errorf("failed to get container port: %w", err)
+//	}
+//
+//	sess, err := session.NewSession(&aws.Config{
+//		Region:   aws.String("eu-central-1"),
+//		Endpoint: aws.String(fmt.Sprintf("http://%s:%s", ip, port.Port())),
+//	})
+//	s3Client := s3.New(sess, aws.NewConfig().WithS3ForcePathStyle(true))
+//
+//	return s3Client, nil
+//}
