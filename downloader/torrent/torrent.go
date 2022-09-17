@@ -100,19 +100,18 @@ func (td *TorrentDownloader) Download(ctx context.Context, url string, filepaths
 		} else {
 			td.log.Debug("downloading file", zap.String("filepath", tf.DisplayPath()), zap.String("url", url))
 
+			wg.Add(1)
 			go func() {
-				wg.Add(1)
+				defer wg.Done()
 				tf.Download()
 				for {
 					select {
 					case <-ctx.Done():
 						tf.SetPriority(anacrolixTorrent.PiecePriorityNone)
-						wg.Done()
 						return
 					case <-time.After(1 * time.Second):
 						td.log.Debug("downloading file", zap.String("filepath", tf.DisplayPath()), zap.String("url", url), zap.Int64("downloaded", tf.BytesCompleted()), zap.Int64("total", tf.Length()))
 						if tf.BytesCompleted() == tf.Length() {
-							wg.Done()
 							return
 						}
 						continue

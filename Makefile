@@ -10,7 +10,7 @@ test:
 .PHONY: test-e2e-gen-docs
 test-e2e-gen-docs:
 	@echo "+ $@"
-	go test -v -timeout 1m -failfast -race -tags gen_docs -parallel 1 ./tests
+	go test -v -timeout 30m -failfast -race -tags gen_docs ./... -coverprofile=coverage.out
 
 .PHONY: cover
 cover:
