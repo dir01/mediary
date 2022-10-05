@@ -5,4 +5,4 @@ ADD go.mod go.sum ./
 RUN go mod download
 ADD . .
 RUN GOPATH= go build -o bin/server ./cmd/server
-CMD bin/service
+CMD bin/server
