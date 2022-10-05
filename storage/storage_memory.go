@@ -10,18 +10,18 @@ import (
 func NewStorageInMemory() service.Storage {
 	return &StorageMemory{
 		metadataMap: make(map[string]service.Metadata),
-		jobMap:      make(map[string]service.JobState),
+		jobMap:      make(map[string]service.Job),
 	}
 }
 
 type StorageMemory struct {
 	metadataMap   map[string]service.Metadata
 	metadataMutex sync.RWMutex
-	jobMap        map[string]service.JobState
+	jobMap        map[string]service.Job
 	jobMutex      sync.RWMutex
 }
 
-func (s *StorageMemory) GetJob(ctx context.Context, id string) (*service.JobState, error) {
+func (s *StorageMemory) GetJob(ctx context.Context, id string) (*service.Job, error) {
 	s.jobMutex.RLock()
 	defer s.jobMutex.RUnlock()
 	if job, exists := s.jobMap[id]; exists {
@@ -31,7 +31,7 @@ func (s *StorageMemory) GetJob(ctx context.Context, id string) (*service.JobStat
 	}
 }
 
-func (s *StorageMemory) SaveJob(ctx context.Context, job *service.JobState) error {
+func (s *StorageMemory) SaveJob(ctx context.Context, job *service.Job) error {
 	if job == nil {
 		return nil
 	}

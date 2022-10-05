@@ -1,0 +1,6 @@
+.git
+bin/
+.github
+.gitignore
+coverage.out
+.torrent.db*

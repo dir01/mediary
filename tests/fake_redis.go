@@ -10,7 +10,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func getFakeRedisURL(ctx context.Context) (redisURL string, teardown func(), err error) {
+func GetFakeRedisURL(ctx context.Context) (redisURL string, teardown func(), err error) {
 	var targetPort nat.Port = "6379"
 
 	req := testcontainers.ContainerRequest{

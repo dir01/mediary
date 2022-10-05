@@ -26,7 +26,7 @@ const (
 	jobTypeConcatenate = "concatenate"
 )
 
-type JobState struct {
+type Job struct {
 	JobParams
 	ID            string `json:"id"`
 	DisplayStatus string `json:"status"`
@@ -39,14 +39,14 @@ const StatusUploading = "uploading"
 const StatusComplete = "complete"
 
 // CreateJob creates an entry for job in storage and enqueues it for processing in background
-func (svc *Service) CreateJob(ctx context.Context, params *JobParams) (*JobState, error) {
+func (svc *Service) CreateJob(ctx context.Context, params *JobParams) (*Job, error) {
 	jobID := svc.calculateJobId(params)
 	svc.log.Debug(
 		"started CreateJob",
 		zap.String("jobID", jobID),
 		zap.Any("params", params),
 	)
-	jobState := &JobState{
+	jobState := &Job{
 		JobParams:     *params,
 		ID:            jobID,
 		DisplayStatus: StatusCreated,
@@ -80,7 +80,7 @@ func (svc *Service) CreateJob(ctx context.Context, params *JobParams) (*JobState
 	return jobState, nil
 }
 
-func (svc *Service) GetJob(ctx context.Context, id string) (*JobState, error) {
+func (svc *Service) GetJob(ctx context.Context, id string) (*Job, error) {
 	return svc.storage.GetJob(ctx, id)
 }
 
@@ -111,7 +111,7 @@ func (svc *Service) onPublishedJob(jobID string) error {
 
 // constructFlow will return a function that will execute the given job.
 // error returned if matching flow is not found of job params do not make sense
-func (svc *Service) constructFlow(jobID string, jobState *JobState) (func() error, error) {
+func (svc *Service) constructFlow(jobID string, jobState *Job) (func() error, error) {
 	switch jobState.Type {
 	case jobTypeConcatenate:
 		return svc.newConcatenateFlow(jobID, jobState)

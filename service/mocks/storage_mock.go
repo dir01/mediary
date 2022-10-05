@@ -16,7 +16,7 @@ import (
 type StorageMock struct {
 	t minimock.Tester
 
-	funcGetJob          func(ctx context.Context, id string) (jp1 *mm_service.JobState, err error)
+	funcGetJob          func(ctx context.Context, id string) (jp1 *mm_service.Job, err error)
 	inspectFuncGetJob   func(ctx context.Context, id string)
 	afterGetJobCounter  uint64
 	beforeGetJobCounter uint64
@@ -28,8 +28,8 @@ type StorageMock struct {
 	beforeGetMetadataCounter uint64
 	GetMetadataMock          mStorageMockGetMetadata
 
-	funcSaveJob          func(ctx context.Context, job *mm_service.JobState) (err error)
-	inspectFuncSaveJob   func(ctx context.Context, job *mm_service.JobState)
+	funcSaveJob          func(ctx context.Context, job *mm_service.Job) (err error)
+	inspectFuncSaveJob   func(ctx context.Context, job *mm_service.Job)
 	afterSaveJobCounter  uint64
 	beforeSaveJobCounter uint64
 	SaveJobMock          mStorageMockSaveJob
@@ -88,7 +88,7 @@ type StorageMockGetJobParams struct {
 
 // StorageMockGetJobResults contains results of the Storage.GetJob
 type StorageMockGetJobResults struct {
-	jp1 *mm_service.JobState
+	jp1 *mm_service.Job
 	err error
 }
 
@@ -124,7 +124,7 @@ func (mmGetJob *mStorageMockGetJob) Inspect(f func(ctx context.Context, id strin
 }
 
 // Return sets up results that will be returned by Storage.GetJob
-func (mmGetJob *mStorageMockGetJob) Return(jp1 *mm_service.JobState, err error) *StorageMock {
+func (mmGetJob *mStorageMockGetJob) Return(jp1 *mm_service.Job, err error) *StorageMock {
 	if mmGetJob.mock.funcGetJob != nil {
 		mmGetJob.mock.t.Fatalf("StorageMock.GetJob mock is already set by Set")
 	}
@@ -137,7 +137,7 @@ func (mmGetJob *mStorageMockGetJob) Return(jp1 *mm_service.JobState, err error) 
 }
 
 //Set uses given function f to mock the Storage.GetJob method
-func (mmGetJob *mStorageMockGetJob) Set(f func(ctx context.Context, id string) (jp1 *mm_service.JobState, err error)) *StorageMock {
+func (mmGetJob *mStorageMockGetJob) Set(f func(ctx context.Context, id string) (jp1 *mm_service.Job, err error)) *StorageMock {
 	if mmGetJob.defaultExpectation != nil {
 		mmGetJob.mock.t.Fatalf("Default expectation is already set for the Storage.GetJob method")
 	}
@@ -166,13 +166,13 @@ func (mmGetJob *mStorageMockGetJob) When(ctx context.Context, id string) *Storag
 }
 
 // Then sets up Storage.GetJob return parameters for the expectation previously defined by the When method
-func (e *StorageMockGetJobExpectation) Then(jp1 *mm_service.JobState, err error) *StorageMock {
+func (e *StorageMockGetJobExpectation) Then(jp1 *mm_service.Job, err error) *StorageMock {
 	e.results = &StorageMockGetJobResults{jp1, err}
 	return e.mock
 }
 
 // GetJob implements service.Storage
-func (mmGetJob *StorageMock) GetJob(ctx context.Context, id string) (jp1 *mm_service.JobState, err error) {
+func (mmGetJob *StorageMock) GetJob(ctx context.Context, id string) (jp1 *mm_service.Job, err error) {
 	mm_atomic.AddUint64(&mmGetJob.beforeGetJobCounter, 1)
 	defer mm_atomic.AddUint64(&mmGetJob.afterGetJobCounter, 1)
 
@@ -517,7 +517,7 @@ type StorageMockSaveJobExpectation struct {
 // StorageMockSaveJobParams contains parameters of the Storage.SaveJob
 type StorageMockSaveJobParams struct {
 	ctx context.Context
-	job *mm_service.JobState
+	job *mm_service.Job
 }
 
 // StorageMockSaveJobResults contains results of the Storage.SaveJob
@@ -526,7 +526,7 @@ type StorageMockSaveJobResults struct {
 }
 
 // Expect sets up expected params for Storage.SaveJob
-func (mmSaveJob *mStorageMockSaveJob) Expect(ctx context.Context, job *mm_service.JobState) *mStorageMockSaveJob {
+func (mmSaveJob *mStorageMockSaveJob) Expect(ctx context.Context, job *mm_service.Job) *mStorageMockSaveJob {
 	if mmSaveJob.mock.funcSaveJob != nil {
 		mmSaveJob.mock.t.Fatalf("StorageMock.SaveJob mock is already set by Set")
 	}
@@ -546,7 +546,7 @@ func (mmSaveJob *mStorageMockSaveJob) Expect(ctx context.Context, job *mm_servic
 }
 
 // Inspect accepts an inspector function that has same arguments as the Storage.SaveJob
-func (mmSaveJob *mStorageMockSaveJob) Inspect(f func(ctx context.Context, job *mm_service.JobState)) *mStorageMockSaveJob {
+func (mmSaveJob *mStorageMockSaveJob) Inspect(f func(ctx context.Context, job *mm_service.Job)) *mStorageMockSaveJob {
 	if mmSaveJob.mock.inspectFuncSaveJob != nil {
 		mmSaveJob.mock.t.Fatalf("Inspect function is already set for StorageMock.SaveJob")
 	}
@@ -570,7 +570,7 @@ func (mmSaveJob *mStorageMockSaveJob) Return(err error) *StorageMock {
 }
 
 //Set uses given function f to mock the Storage.SaveJob method
-func (mmSaveJob *mStorageMockSaveJob) Set(f func(ctx context.Context, job *mm_service.JobState) (err error)) *StorageMock {
+func (mmSaveJob *mStorageMockSaveJob) Set(f func(ctx context.Context, job *mm_service.Job) (err error)) *StorageMock {
 	if mmSaveJob.defaultExpectation != nil {
 		mmSaveJob.mock.t.Fatalf("Default expectation is already set for the Storage.SaveJob method")
 	}
@@ -585,7 +585,7 @@ func (mmSaveJob *mStorageMockSaveJob) Set(f func(ctx context.Context, job *mm_se
 
 // When sets expectation for the Storage.SaveJob which will trigger the result defined by the following
 // Then helper
-func (mmSaveJob *mStorageMockSaveJob) When(ctx context.Context, job *mm_service.JobState) *StorageMockSaveJobExpectation {
+func (mmSaveJob *mStorageMockSaveJob) When(ctx context.Context, job *mm_service.Job) *StorageMockSaveJobExpectation {
 	if mmSaveJob.mock.funcSaveJob != nil {
 		mmSaveJob.mock.t.Fatalf("StorageMock.SaveJob mock is already set by Set")
 	}
@@ -605,7 +605,7 @@ func (e *StorageMockSaveJobExpectation) Then(err error) *StorageMock {
 }
 
 // SaveJob implements service.Storage
-func (mmSaveJob *StorageMock) SaveJob(ctx context.Context, job *mm_service.JobState) (err error) {
+func (mmSaveJob *StorageMock) SaveJob(ctx context.Context, job *mm_service.Job) (err error) {
 	mm_atomic.AddUint64(&mmSaveJob.beforeSaveJobCounter, 1)
 	defer mm_atomic.AddUint64(&mmSaveJob.afterSaveJobCounter, 1)
 

@@ -32,7 +32,7 @@ Feel free to repeat your request later: metadata is still being fetched in backg
 
 
 ```
-$ curl -X GET '/metadata?url=magnet:?xt=urn:btih:1EAA77FA58C40D5499914AE740EC7F906EF10D65'
+$ curl -X GET '/metadata?url=magnet:?xt=urn:btih:FB0B49D5E3E18E29868C680D2F7BC00D67987D56&tr=http%3A%2F%2Fbt.t-ru.org'
 {"status": "accepted"}
 ```
 
@@ -46,38 +46,22 @@ It will not return a response until the metadata is fetched.
 There is still a timeout on the request, but it's pretty long (5 minutes).
 
 ```
-$ curl -X GET '/metadata/long-polling?url=magnet:?xt=urn:btih:1EAA77FA58C40D5499914AE740EC7F906EF10D65'
+$ curl -X GET '/metadata/long-polling?url=magnet:?xt=urn:btih:FB0B49D5E3E18E29868C680D2F7BC00D67987D56&tr=http%3A%2F%2Fbt.t-ru.org'
 {
-  "url": "magnet:?xt=urn:btih:1EAA77FA58C40D5499914AE740EC7F906EF10D65",
-  "name": "John Coltrane - A Love Supreme (1965) (Acoustic Sounds Series) (PBTHAL LP 24-96) [FLAC] vtwin88cube",
+  "url": "magnet:?xt=urn:btih:FB0B49D5E3E18E29868C680D2F7BC00D67987D56",
+  "name": "Джо Диспенза - Медитации к Силе подсознания [Александр Шаронов]",
   "files": [
     {
-      "path": "00.-John Coltrane - A Love Supreme.m3u",
-      "length_bytes": 111
+      "path": "глава 2.mp3",
+      "length_bytes": 42107250
     },
     {
-      "path": "01.-Part 1 - Acknowledgement.flac",
-      "length_bytes": 170093783
+      "path": "глава 1.mp3",
+      "length_bytes": 40623850
     },
     {
-      "path": "02.-Part 2 - Resolution.flac",
-      "length_bytes": 165357192
-    },
-    {
-      "path": "03.-Part 3 - Pursuance \u0026 Part 4 - Psalm.flac",
-      "length_bytes": 386514548
-    },
-    {
-      "path": "DR13.txt",
-      "length_bytes": 979
-    },
-    {
-      "path": "folder.jpg",
-      "length_bytes": 187670
-    },
-    {
-      "path": "lineage.txt",
-      "length_bytes": 556
+      "path": "вступление.mp3",
+      "length_bytes": 1181881
     }
   ]
 }
@@ -91,38 +75,22 @@ It goes without saying, that once the metadata is fetched, it is cached.
 So all consecutive requests for the same URL will return the same metadata, and immediately.
 
 ```
-$ curl -X GET '/metadata?url=magnet:?xt=urn:btih:1EAA77FA58C40D5499914AE740EC7F906EF10D65'
+$ curl -X GET '/metadata?url=magnet:?xt=urn:btih:FB0B49D5E3E18E29868C680D2F7BC00D67987D56&tr=http%3A%2F%2Fbt.t-ru.org'
 {
-  "url": "magnet:?xt=urn:btih:1EAA77FA58C40D5499914AE740EC7F906EF10D65",
-  "name": "John Coltrane - A Love Supreme (1965) (Acoustic Sounds Series) (PBTHAL LP 24-96) [FLAC] vtwin88cube",
+  "url": "magnet:?xt=urn:btih:FB0B49D5E3E18E29868C680D2F7BC00D67987D56",
+  "name": "Джо Диспенза - Медитации к Силе подсознания [Александр Шаронов]",
   "files": [
     {
-      "path": "00.-John Coltrane - A Love Supreme.m3u",
-      "length_bytes": 111
+      "path": "глава 2.mp3",
+      "length_bytes": 42107250
     },
     {
-      "path": "01.-Part 1 - Acknowledgement.flac",
-      "length_bytes": 170093783
+      "path": "глава 1.mp3",
+      "length_bytes": 40623850
     },
     {
-      "path": "02.-Part 2 - Resolution.flac",
-      "length_bytes": 165357192
-    },
-    {
-      "path": "03.-Part 3 - Pursuance \u0026 Part 4 - Psalm.flac",
-      "length_bytes": 386514548
-    },
-    {
-      "path": "DR13.txt",
-      "length_bytes": 979
-    },
-    {
-      "path": "folder.jpg",
-      "length_bytes": 187670
-    },
-    {
-      "path": "lineage.txt",
-      "length_bytes": 556
+      "path": "вступление.mp3",
+      "length_bytes": 1181881
     }
   ]
 }
@@ -138,7 +106,7 @@ requires a list of files to be concatenated and, optionally, an `audioCoded` to 
 
 ```
 $ curl -X POST '/jobs'
-{"status": "accepted", "id": "63ef9b913789f9f15bdbdaec832e4629"}
+{"status": "accepted", "id": "a9502f6fa9dc632906fa1ac92381cfec"}
 ```
 
 
@@ -150,7 +118,7 @@ To check the status of the job, you can use the `/jobs/:id` endpoint.
 0s after starting the job:
 
 ```
-$ curl -X GET '/jobs/63ef9b913789f9f15bdbdaec832e4629'
+$ curl -X GET '/jobs/a9502f6fa9dc632906fa1ac92381cfec'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
@@ -160,18 +128,18 @@ $ curl -X GET '/jobs/63ef9b913789f9f15bdbdaec832e4629'
       "01-001.mp3",
       "01-002.mp3"
     ],
-    "uploadUrl": "http://localhost:49826/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20220917%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20220917T140534Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=56e1475e61f50e88a36689839b2afd58bc124d7b6974807d07a701184495fb59"
+    "uploadUrl": "http://localhost:50287/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20220928%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20220928T072916Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=6a1f4b264b2a565a642a99f09e9e4b073e0ab49638d461339ea61399acc7f8c0"
   },
-  "id": "63ef9b913789f9f15bdbdaec832e4629",
+  "id": "a9502f6fa9dc632906fa1ac92381cfec",
   "status": "downloading"
 }
 ```
 
 
-5s later:
+4s later:
 
 ```
-$ curl -X GET '/jobs/63ef9b913789f9f15bdbdaec832e4629'
+$ curl -X GET '/jobs/a9502f6fa9dc632906fa1ac92381cfec'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
@@ -181,18 +149,18 @@ $ curl -X GET '/jobs/63ef9b913789f9f15bdbdaec832e4629'
       "01-001.mp3",
       "01-002.mp3"
     ],
-    "uploadUrl": "http://localhost:49826/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20220917%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20220917T140534Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=56e1475e61f50e88a36689839b2afd58bc124d7b6974807d07a701184495fb59"
+    "uploadUrl": "http://localhost:50287/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20220928%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20220928T072916Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=6a1f4b264b2a565a642a99f09e9e4b073e0ab49638d461339ea61399acc7f8c0"
   },
-  "id": "63ef9b913789f9f15bdbdaec832e4629",
+  "id": "a9502f6fa9dc632906fa1ac92381cfec",
   "status": "processing"
 }
 ```
 
 
-47s later:
+54s later:
 
 ```
-$ curl -X GET '/jobs/63ef9b913789f9f15bdbdaec832e4629'
+$ curl -X GET '/jobs/a9502f6fa9dc632906fa1ac92381cfec'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
@@ -202,9 +170,9 @@ $ curl -X GET '/jobs/63ef9b913789f9f15bdbdaec832e4629'
       "01-001.mp3",
       "01-002.mp3"
     ],
-    "uploadUrl": "http://localhost:49826/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20220917%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20220917T140534Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=56e1475e61f50e88a36689839b2afd58bc124d7b6974807d07a701184495fb59"
+    "uploadUrl": "http://localhost:50287/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20220928%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20220928T072916Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=6a1f4b264b2a565a642a99f09e9e4b073e0ab49638d461339ea61399acc7f8c0"
   },
-  "id": "63ef9b913789f9f15bdbdaec832e4629",
+  "id": "a9502f6fa9dc632906fa1ac92381cfec",
   "status": "uploading"
 }
 ```
@@ -213,7 +181,7 @@ $ curl -X GET '/jobs/63ef9b913789f9f15bdbdaec832e4629'
 2s later:
 
 ```
-$ curl -X GET '/jobs/63ef9b913789f9f15bdbdaec832e4629'
+$ curl -X GET '/jobs/a9502f6fa9dc632906fa1ac92381cfec'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
@@ -223,9 +191,9 @@ $ curl -X GET '/jobs/63ef9b913789f9f15bdbdaec832e4629'
       "01-001.mp3",
       "01-002.mp3"
     ],
-    "uploadUrl": "http://localhost:49826/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20220917%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20220917T140534Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=56e1475e61f50e88a36689839b2afd58bc124d7b6974807d07a701184495fb59"
+    "uploadUrl": "http://localhost:50287/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20220928%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20220928T072916Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=6a1f4b264b2a565a642a99f09e9e4b073e0ab49638d461339ea61399acc7f8c0"
   },
-  "id": "63ef9b913789f9f15bdbdaec832e4629",
+  "id": "a9502f6fa9dc632906fa1ac92381cfec",
   "status": "complete"
 }
 ```

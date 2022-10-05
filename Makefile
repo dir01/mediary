@@ -5,12 +5,17 @@ build:
 .PHONY: test
 test:
 	@echo "+ $@"
-	go test -v ./... -coverprofile=coverage.out
+	go test -v -failfast -race ./... -coverprofile=coverage.out
 
 .PHONY: test-e2e-gen-docs
 test-e2e-gen-docs:
 	@echo "+ $@"
 	go test -v -timeout 30m -failfast -race -tags gen_docs ./... -coverprofile=coverage.out
+
+.PHONY: generate
+generate:
+	@echo "+ $@"
+	go generate ./...
 
 .PHONY: cover
 cover:

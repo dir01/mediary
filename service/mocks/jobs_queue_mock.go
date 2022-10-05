@@ -21,6 +21,12 @@ type JobsQueueMock struct {
 	beforePublishCounter uint64
 	PublishMock          mJobsQueueMockPublish
 
+	funcShutdown          func()
+	inspectFuncShutdown   func()
+	afterShutdownCounter  uint64
+	beforeShutdownCounter uint64
+	ShutdownMock          mJobsQueueMockShutdown
+
 	funcSubscribe          func(f1 func(jobId string) error)
 	inspectFuncSubscribe   func(f1 func(jobId string) error)
 	afterSubscribeCounter  uint64
@@ -37,6 +43,8 @@ func NewJobsQueueMock(t minimock.Tester) *JobsQueueMock {
 
 	m.PublishMock = mJobsQueueMockPublish{mock: m}
 	m.PublishMock.callArgs = []*JobsQueueMockPublishParams{}
+
+	m.ShutdownMock = mJobsQueueMockShutdown{mock: m}
 
 	m.SubscribeMock = mJobsQueueMockSubscribe{mock: m}
 	m.SubscribeMock.callArgs = []*JobsQueueMockSubscribeParams{}
@@ -260,6 +268,141 @@ func (m *JobsQueueMock) MinimockPublishInspect() {
 	}
 }
 
+type mJobsQueueMockShutdown struct {
+	mock               *JobsQueueMock
+	defaultExpectation *JobsQueueMockShutdownExpectation
+	expectations       []*JobsQueueMockShutdownExpectation
+}
+
+// JobsQueueMockShutdownExpectation specifies expectation struct of the JobsQueue.Shutdown
+type JobsQueueMockShutdownExpectation struct {
+	mock *JobsQueueMock
+
+	Counter uint64
+}
+
+// Expect sets up expected params for JobsQueue.Shutdown
+func (mmShutdown *mJobsQueueMockShutdown) Expect() *mJobsQueueMockShutdown {
+	if mmShutdown.mock.funcShutdown != nil {
+		mmShutdown.mock.t.Fatalf("JobsQueueMock.Shutdown mock is already set by Set")
+	}
+
+	if mmShutdown.defaultExpectation == nil {
+		mmShutdown.defaultExpectation = &JobsQueueMockShutdownExpectation{}
+	}
+
+	return mmShutdown
+}
+
+// Inspect accepts an inspector function that has same arguments as the JobsQueue.Shutdown
+func (mmShutdown *mJobsQueueMockShutdown) Inspect(f func()) *mJobsQueueMockShutdown {
+	if mmShutdown.mock.inspectFuncShutdown != nil {
+		mmShutdown.mock.t.Fatalf("Inspect function is already set for JobsQueueMock.Shutdown")
+	}
+
+	mmShutdown.mock.inspectFuncShutdown = f
+
+	return mmShutdown
+}
+
+// Return sets up results that will be returned by JobsQueue.Shutdown
+func (mmShutdown *mJobsQueueMockShutdown) Return() *JobsQueueMock {
+	if mmShutdown.mock.funcShutdown != nil {
+		mmShutdown.mock.t.Fatalf("JobsQueueMock.Shutdown mock is already set by Set")
+	}
+
+	if mmShutdown.defaultExpectation == nil {
+		mmShutdown.defaultExpectation = &JobsQueueMockShutdownExpectation{mock: mmShutdown.mock}
+	}
+
+	return mmShutdown.mock
+}
+
+//Set uses given function f to mock the JobsQueue.Shutdown method
+func (mmShutdown *mJobsQueueMockShutdown) Set(f func()) *JobsQueueMock {
+	if mmShutdown.defaultExpectation != nil {
+		mmShutdown.mock.t.Fatalf("Default expectation is already set for the JobsQueue.Shutdown method")
+	}
+
+	if len(mmShutdown.expectations) > 0 {
+		mmShutdown.mock.t.Fatalf("Some expectations are already set for the JobsQueue.Shutdown method")
+	}
+
+	mmShutdown.mock.funcShutdown = f
+	return mmShutdown.mock
+}
+
+// Shutdown implements service.JobsQueue
+func (mmShutdown *JobsQueueMock) Shutdown() {
+	mm_atomic.AddUint64(&mmShutdown.beforeShutdownCounter, 1)
+	defer mm_atomic.AddUint64(&mmShutdown.afterShutdownCounter, 1)
+
+	if mmShutdown.inspectFuncShutdown != nil {
+		mmShutdown.inspectFuncShutdown()
+	}
+
+	if mmShutdown.ShutdownMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmShutdown.ShutdownMock.defaultExpectation.Counter, 1)
+
+		return
+
+	}
+	if mmShutdown.funcShutdown != nil {
+		mmShutdown.funcShutdown()
+		return
+	}
+	mmShutdown.t.Fatalf("Unexpected call to JobsQueueMock.Shutdown.")
+
+}
+
+// ShutdownAfterCounter returns a count of finished JobsQueueMock.Shutdown invocations
+func (mmShutdown *JobsQueueMock) ShutdownAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmShutdown.afterShutdownCounter)
+}
+
+// ShutdownBeforeCounter returns a count of JobsQueueMock.Shutdown invocations
+func (mmShutdown *JobsQueueMock) ShutdownBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmShutdown.beforeShutdownCounter)
+}
+
+// MinimockShutdownDone returns true if the count of the Shutdown invocations corresponds
+// the number of defined expectations
+func (m *JobsQueueMock) MinimockShutdownDone() bool {
+	for _, e := range m.ShutdownMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	// if default expectation was set then invocations count should be greater than zero
+	if m.ShutdownMock.defaultExpectation != nil && mm_atomic.LoadUint64(&m.afterShutdownCounter) < 1 {
+		return false
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcShutdown != nil && mm_atomic.LoadUint64(&m.afterShutdownCounter) < 1 {
+		return false
+	}
+	return true
+}
+
+// MinimockShutdownInspect logs each unmet expectation
+func (m *JobsQueueMock) MinimockShutdownInspect() {
+	for _, e := range m.ShutdownMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Error("Expected call to JobsQueueMock.Shutdown")
+		}
+	}
+
+	// if default expectation was set then invocations count should be greater than zero
+	if m.ShutdownMock.defaultExpectation != nil && mm_atomic.LoadUint64(&m.afterShutdownCounter) < 1 {
+		m.t.Error("Expected call to JobsQueueMock.Shutdown")
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcShutdown != nil && mm_atomic.LoadUint64(&m.afterShutdownCounter) < 1 {
+		m.t.Error("Expected call to JobsQueueMock.Shutdown")
+	}
+}
+
 type mJobsQueueMockSubscribe struct {
 	mock               *JobsQueueMock
 	defaultExpectation *JobsQueueMockSubscribeExpectation
@@ -452,6 +595,8 @@ func (m *JobsQueueMock) MinimockFinish() {
 	if !m.minimockDone() {
 		m.MinimockPublishInspect()
 
+		m.MinimockShutdownInspect()
+
 		m.MinimockSubscribeInspect()
 		m.t.FailNow()
 	}
@@ -477,5 +622,6 @@ func (m *JobsQueueMock) minimockDone() bool {
 	done := true
 	return done &&
 		m.MinimockPublishDone() &&
+		m.MinimockShutdownDone() &&
 		m.MinimockSubscribeDone()
 }

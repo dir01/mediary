@@ -30,7 +30,7 @@ import (
 var logger, _ = zap.NewDevelopment()
 
 const (
-	magnetURL      = "magnet:?xt=urn:btih:1EAA77FA58C40D5499914AE740EC7F906EF10D65"
+	magnetURL      = "magnet:?xt=urn:btih:FB0B49D5E3E18E29868C680D2F7BC00D67987D56&tr=http%3A%2F%2Fbt.t-ru.org"
 	testBucketName = "some-bucket"
 )
 
@@ -46,7 +46,7 @@ func TestApplication(t *testing.T) {
 		t.Fatalf("error creating torrent downloader: %v", err)
 	}
 
-	redisURL, teardownRedis, err := getFakeRedisURL(context.Background())
+	redisURL, teardownRedis, err := GetFakeRedisURL(context.Background())
 	defer teardownRedis()
 	if err != nil {
 		t.Fatalf("error getting redis url: %v", err)
@@ -58,7 +58,7 @@ func TestApplication(t *testing.T) {
 	redisClient := redis.NewClient(opt)
 	defer func() { _ = redisClient.Close() }()
 
-	queue, err := jobs_queue.NewRedisJobsQueue(redisClient, 10, "mediary:")
+	queue, err := jobs_queue.NewRedisJobsQueue(redisClient, logger, 10, "mediary:")
 	if err != nil {
 		t.Fatalf("error initializing redis jobs queue: %v", err)
 	}
@@ -110,41 +110,6 @@ Feel free to repeat your request later: metadata is still being fetched in backg
 	})
 
 	t.Run("metadata with long-polling", func(t *testing.T) {
-		expectedResponse := `{
-  "url": "magnet:?xt=urn:btih:1EAA77FA58C40D5499914AE740EC7F906EF10D65",
-  "name": "John Coltrane - A Love Supreme (1965) (Acoustic Sounds Series) (PBTHAL LP 24-96) [FLAC] vtwin88cube",
-  "files": [
-    {
-      "path": "00.-John Coltrane - A Love Supreme.m3u",
-      "length_bytes": 111
-    },
-    {
-      "path": "01.-Part 1 - Acknowledgement.flac",
-      "length_bytes": 170093783
-    },
-    {
-      "path": "02.-Part 2 - Resolution.flac",
-      "length_bytes": 165357192
-    },
-    {
-      "path": "03.-Part 3 - Pursuance \u0026 Part 4 - Psalm.flac",
-      "length_bytes": 386514548
-    },
-    {
-      "path": "DR13.txt",
-      "length_bytes": 979
-    },
-    {
-      "path": "folder.jpg",
-      "length_bytes": 187670
-    },
-    {
-      "path": "lineage.txt",
-      "length_bytes": 556
-    }
-  ]
-}`
-
 		docs.InsertText(`### '''/metadata/long-polling'''
 
 In case you'd rather wait for the metadata to be fetched, you can use the long-polling endpoint.
@@ -158,50 +123,12 @@ There is still a timeout on the request, but it's pretty long (5 minutes).`)
 			nil,
 			http.StatusOK,
 			func(rr *httptest.ResponseRecorder) {
-				if rr.Body.String() != expectedResponse {
-					fmt.Println(rr.Body.String())
-					t.Errorf("handler returned unexpected body: got %v want %v", rr.Body.String(), expectedResponse)
-				}
+				assertMatchesGoldenFile(t, rr.Body.Bytes(), "metadata_long_polling.json")
 			},
 		)
 	})
 
 	t.Run("cached metadata", func(t *testing.T) {
-		expectedResponse := `{
-  "url": "magnet:?xt=urn:btih:1EAA77FA58C40D5499914AE740EC7F906EF10D65",
-  "name": "John Coltrane - A Love Supreme (1965) (Acoustic Sounds Series) (PBTHAL LP 24-96) [FLAC] vtwin88cube",
-  "files": [
-    {
-      "path": "00.-John Coltrane - A Love Supreme.m3u",
-      "length_bytes": 111
-    },
-    {
-      "path": "01.-Part 1 - Acknowledgement.flac",
-      "length_bytes": 170093783
-    },
-    {
-      "path": "02.-Part 2 - Resolution.flac",
-      "length_bytes": 165357192
-    },
-    {
-      "path": "03.-Part 3 - Pursuance \u0026 Part 4 - Psalm.flac",
-      "length_bytes": 386514548
-    },
-    {
-      "path": "DR13.txt",
-      "length_bytes": 979
-    },
-    {
-      "path": "folder.jpg",
-      "length_bytes": 187670
-    },
-    {
-      "path": "lineage.txt",
-      "length_bytes": 556
-    }
-  ]
-}`
-
 		docs.InsertText(`### '''/metadata''' - Cached
 
 It goes without saying, that once the metadata is fetched, it is cached.
@@ -214,10 +141,7 @@ So all consecutive requests for the same URL will return the same metadata, and 
 			nil,
 			http.StatusOK,
 			func(rr *httptest.ResponseRecorder) {
-				if rr.Body.String() != expectedResponse {
-					fmt.Println(rr.Body.String())
-					t.Errorf("handler returned unexpected body: got %v want %v", rr.Body.String(), expectedResponse)
-				}
+				assertMatchesGoldenFile(t, rr.Body.Bytes(), "metadata_cached.json")
 			},
 		)
 	})

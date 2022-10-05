@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (svc *Service) newConcatenateFlow(jobID string, state *JobState) (func() error, error) {
+func (svc *Service) newConcatenateFlow(jobID string, state *Job) (func() error, error) {
 	type Params struct {
 		Filepaths  []string `json:"filepaths"`
 		AudioCodec string   `json:"audioCodec"`

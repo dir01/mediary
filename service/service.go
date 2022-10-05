@@ -52,14 +52,15 @@ type Downloader interface {
 type JobsQueue interface {
 	Publish(ctx context.Context, jobId string) error
 	Subscribe(func(jobId string) error)
+	Shutdown()
 }
 
 //go:generate minimock -i Storage -o ./mocks/storage_mock.go -g
 type Storage interface {
 	GetMetadata(ctx context.Context, url string) (*Metadata, error)
 	SaveMetadata(ctx context.Context, metadata *Metadata) error
-	GetJob(ctx context.Context, id string) (*JobState, error)
-	SaveJob(ctx context.Context, job *JobState) error
+	GetJob(ctx context.Context, id string) (*Job, error)
+	SaveJob(ctx context.Context, job *Job) error
 }
 
 //go:generate minimock -i MediaProcessor -o ./mocks/media_processor_mock.go -g
