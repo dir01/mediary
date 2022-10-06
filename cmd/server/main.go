@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/dir01/mediary/config"
 	"github.com/dir01/mediary/downloader"
 	"github.com/dir01/mediary/downloader/torrent"
 	mediary_http "github.com/dir01/mediary/http"
@@ -18,6 +19,7 @@ import (
 )
 
 func main() {
+	conf := config.New()
 	logger, err := zap.NewDevelopment()
 	if err != nil {
 		log.Fatalf("error initializing logger: %v", err)
@@ -34,7 +36,7 @@ func main() {
 	dwn := downloader.NewDownloader([]service.Downloader{torrentDownloader})
 
 	// redisClient will be used both for storage and queue, mostly because I've found some cloud redis with a free tier
-	opt, _ := redis.ParseURL("redis://localhost:6379")
+	opt, _ := redis.ParseURL(conf.RedisUrlOrDie())
 	redisClient := redis.NewClient(opt)
 	defer func() { _ = redisClient.Close() }()
 

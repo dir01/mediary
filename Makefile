@@ -25,7 +25,7 @@ cover:
 .PHONY: run
 run:
 	@echo "+ $@"
-	go run ./cmd/server
+	REDIS_URL=redis://localhost:6379 go run ./cmd/server
 
 .PHONY: docker-build
 docker-build:
