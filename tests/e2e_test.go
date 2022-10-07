@@ -63,7 +63,7 @@ func TestApplication(t *testing.T) {
 		t.Fatalf("error initializing redis jobs queue: %v", err)
 	}
 
-	store := storage.NewStorageInMemory()
+	store := storage.NewRedisStorage(redisClient, "mediary:")
 	mediaProcessor, err := media_processor.NewFFMpegMediaProcessor(logger)
 	if err != nil {
 		t.Fatalf("error creating media processor: %v", err)

@@ -7,21 +7,21 @@ import (
 	"github.com/dir01/mediary/service"
 )
 
-func NewStorageInMemory() service.Storage {
-	return &StorageMemory{
+func NewMemoryStorage() service.Storage {
+	return &MemoryStorage{
 		metadataMap: make(map[string]service.Metadata),
 		jobMap:      make(map[string]service.Job),
 	}
 }
 
-type StorageMemory struct {
+type MemoryStorage struct {
 	metadataMap   map[string]service.Metadata
 	metadataMutex sync.RWMutex
 	jobMap        map[string]service.Job
 	jobMutex      sync.RWMutex
 }
 
-func (s *StorageMemory) GetJob(ctx context.Context, id string) (*service.Job, error) {
+func (s *MemoryStorage) GetJob(ctx context.Context, id string) (*service.Job, error) {
 	s.jobMutex.RLock()
 	defer s.jobMutex.RUnlock()
 	if job, exists := s.jobMap[id]; exists {
@@ -31,7 +31,7 @@ func (s *StorageMemory) GetJob(ctx context.Context, id string) (*service.Job, er
 	}
 }
 
-func (s *StorageMemory) SaveJob(ctx context.Context, job *service.Job) error {
+func (s *MemoryStorage) SaveJob(ctx context.Context, job *service.Job) error {
 	if job == nil {
 		return nil
 	}
@@ -41,7 +41,7 @@ func (s *StorageMemory) SaveJob(ctx context.Context, job *service.Job) error {
 	return nil
 }
 
-func (s *StorageMemory) GetMetadata(ctx context.Context, url string) (*service.Metadata, error) {
+func (s *MemoryStorage) GetMetadata(ctx context.Context, url string) (*service.Metadata, error) {
 	s.metadataMutex.RLock()
 	defer s.metadataMutex.RUnlock()
 
@@ -52,7 +52,7 @@ func (s *StorageMemory) GetMetadata(ctx context.Context, url string) (*service.M
 	}
 }
 
-func (s *StorageMemory) SaveMetadata(ctx context.Context, metadata *service.Metadata) error {
+func (s *MemoryStorage) SaveMetadata(ctx context.Context, metadata *service.Metadata) error {
 	if metadata == nil {
 		return nil
 	}

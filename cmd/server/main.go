@@ -46,7 +46,7 @@ func main() {
 	}
 	defer queue.Shutdown()
 
-	store := storage.NewStorageInMemory()
+	store := storage.NewRedisStorage(redisClient, "mediary:")
 
 	mediaProc, err := media_processor.NewFFMpegMediaProcessor(logger)
 	if err != nil {
