@@ -15,7 +15,7 @@ func PrepareHTTPServerMux(service *service.Service) *http.ServeMux {
 	mux.HandleFunc("/metadata/long-polling", handleGetMetadata(service, 5*time.Minute))
 	mux.HandleFunc("/jobs/", handleGetJob(service))
 	mux.HandleFunc("/jobs", handleCreateJob(service))
-	//mux.HandleFunc("/", handleDocs())
+	mux.HandleFunc("/", handleDocs())
 	return mux
 }
 
