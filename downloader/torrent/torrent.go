@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -57,6 +58,9 @@ func (td *TorrentDownloader) GetMetadata(ctx context.Context, url string) (*serv
 			LenBytes: f.Length,
 		}
 	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Path < files[j].Path
+	})
 	metadata := &service.Metadata{
 		URL:   url,
 		Name:  info.Name,
