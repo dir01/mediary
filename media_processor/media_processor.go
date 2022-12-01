@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -22,6 +23,24 @@ func NewFFMpegMediaProcessor(logger *zap.Logger) (service.MediaProcessor, error)
 
 type FFMpegMediaProcessor struct {
 	log *zap.Logger
+}
+
+func (conv *FFMpegMediaProcessor) GetInfo(ctx context.Context, filepath string) (info *service.MediaInfo, err error) {
+	info = &service.MediaInfo{}
+
+	if state, err := os.Stat(filepath); err == nil {
+		info.FileLenBytes = state.Size()
+	} else {
+		return nil, errors.Wrap(err, "failed to stat file")
+	}
+
+	if duration, err := conv.GetDuration(filepath); err == nil {
+		info.Duration = duration
+	} else {
+		return nil, errors.Wrap(err, "failed to get duration")
+	}
+
+	return info, nil
 }
 
 func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []string, audioCodec string) (string, error) {

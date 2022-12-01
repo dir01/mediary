@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -17,6 +18,7 @@ var (
 )
 
 type JobParams struct {
+	ID     string                 `json:"id"`
 	URL    string                 `json:"url"`
 	Type   string                 `json:"type"`
 	Params map[string]interface{} `json:"params"`
@@ -28,8 +30,10 @@ const (
 
 type Job struct {
 	JobParams
-	ID            string `json:"id"`
-	DisplayStatus string `json:"status"`
+	ID                  string        `json:"id"`
+	DisplayStatus       string        `json:"status"`
+	ResultMediaDuration time.Duration `json:"result_media_duration,omitempty"`
+	ResultFileBytes     int64         `json:"result_file_bytes,omitempty"`
 }
 
 const StatusCreated = "created"

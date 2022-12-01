@@ -8,14 +8,14 @@ import (
 	"go.uber.org/zap"
 )
 
-func (svc *Service) newConcatenateFlow(jobID string, state *Job) (func() error, error) {
+func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, error) {
 	type Params struct {
 		Filepaths  []string `json:"filepaths"`
 		AudioCodec string   `json:"audioCodec"`
 		UploadURL  string   `json:"uploadUrl"`
 	}
 	params := Params{}
-	err := mapToStruct(state.Params, &params)
+	err := mapToStruct(job.Params, &params)
 	if err != nil {
 		svc.log.Error("failed to parse job params", zap.String("jobID", jobID), zap.Error(err))
 		return nil, fmt.Errorf("failed to parse job params to %T: %w", params, err)
@@ -70,6 +70,15 @@ func (svc *Service) newConcatenateFlow(jobID string, state *Job) (func() error, 
 			svc.log.Error("failed to concatenate files", zap.String("jobID", jobID), zap.Error(err))
 			return fmt.Errorf("failed to concatenate files: %w", err)
 		}
+
+		info, err := svc.mediaProcessor.GetInfo(ctx, resultFilepath)
+		if err != nil {
+			svc.log.Error("failed to get info about result file", zap.String("jobID", jobID), zap.Error(err))
+			return fmt.Errorf("failed to get info about result file: %w", err)
+		}
+		job.ResultMediaDuration = info.Duration
+		job.ResultFileBytes = info.FileLenBytes
+		_ = svc.storage.SaveJob(ctx, job)
 
 		updateJobStatus(StatusUploading)
 		svc.log.Debug("starting upload", zap.String("jobID", jobID))

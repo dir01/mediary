@@ -52,16 +52,16 @@ $ curl -X GET '/metadata/long-polling?url=magnet:?xt=urn:btih:FB0B49D5E3E18E2986
   "name": "Джо Диспенза - Медитации к Силе подсознания [Александр Шаронов]",
   "files": [
     {
-      "path": "глава 2.mp3",
-      "length_bytes": 42107250
+      "path": "вступление.mp3",
+      "length_bytes": 1181881
     },
     {
       "path": "глава 1.mp3",
       "length_bytes": 40623850
     },
     {
-      "path": "вступление.mp3",
-      "length_bytes": 1181881
+      "path": "глава 2.mp3",
+      "length_bytes": 42107250
     }
   ]
 }
@@ -81,16 +81,16 @@ $ curl -X GET '/metadata?url=magnet:?xt=urn:btih:FB0B49D5E3E18E29868C680D2F7BC00
   "name": "Джо Диспенза - Медитации к Силе подсознания [Александр Шаронов]",
   "files": [
     {
-      "path": "глава 2.mp3",
-      "length_bytes": 42107250
+      "path": "вступление.mp3",
+      "length_bytes": 1181881
     },
     {
       "path": "глава 1.mp3",
       "length_bytes": 40623850
     },
     {
-      "path": "вступление.mp3",
-      "length_bytes": 1181881
+      "path": "глава 2.mp3",
+      "length_bytes": 42107250
     }
   ]
 }
@@ -102,11 +102,22 @@ $ curl -X GET '/metadata?url=magnet:?xt=urn:btih:FB0B49D5E3E18E29868C680D2F7BC00
 POST to `/jobs` will schedule for background execution a process of downloading, converting/processing and uploading the media.
 Only required parameters are `url` and `type`. `type` signifies the type of operation to be performed. 
 Each operation can require some additional parameters, passed as `params`. For example, `concatenate` job
-requires a list of files to be concatenated and, optionally, an `audioCoded` to be used for the output file.
+requires a list of files to be concatenated and, optionally, an `audioCodec` to be used for the output file.
 
 ```
-$ curl -X POST '/jobs'
-{"status": "accepted", "id": "21a544f8e5b08fb3de04a3c1e15c295f"}
+$ curl -X POST '/jobs'--data-raw='{
+			"url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73&tr=http%3A%2F%2Fbt3.t-ru.org",
+			"type": "concatenate",
+			"params": {
+				"filepaths": [
+					"01-001.mp3",
+					"01-002.mp3"
+				],
+				"audioCodec": "mp3",
+				"uploadUrl": "http://localhost:61535/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=dummy%2F20221201%2F%2Fs3%2Faws4_request&X-Amz-Date=20221201T000244Z&X-Amz-Expires=900&X-Amz-Security-Token=dummy&X-Amz-SignedHeaders=host&x-id=PutObject&X-Amz-Signature=1325e4b9accaeea268a0362a1fb05fc48d94e5d569e6ae445182abf41f21f35a"
+			}
+		}'
+{"status": "accepted", "id": "bc7dc9d9a8eb306bff1f341319fb7926"}
 ```
 
 
@@ -118,7 +129,7 @@ To check the status of the job, you can use the `/jobs/:id` endpoint.
 0s after starting the job:
 
 ```
-$ curl -X GET '/jobs/21a544f8e5b08fb3de04a3c1e15c295f'
+$ curl -X GET '/jobs/bc7dc9d9a8eb306bff1f341319fb7926'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
@@ -128,18 +139,18 @@ $ curl -X GET '/jobs/21a544f8e5b08fb3de04a3c1e15c295f'
       "01-001.mp3",
       "01-002.mp3"
     ],
-    "uploadUrl": "http://localhost:50172/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20221007%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20221007T142626Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=7b0450640d310948fa8fd365e0f5a7cd6126ca126623f127659cd96de0457d8d"
+    "uploadUrl": "http://localhost:61535/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20221201%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20221201T000244Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=1325e4b9accaeea268a0362a1fb05fc48d94e5d569e6ae445182abf41f21f35a"
   },
-  "id": "21a544f8e5b08fb3de04a3c1e15c295f",
+  "id": "bc7dc9d9a8eb306bff1f341319fb7926",
   "status": "downloading"
 }
 ```
 
 
-4s later:
+5s later:
 
 ```
-$ curl -X GET '/jobs/21a544f8e5b08fb3de04a3c1e15c295f'
+$ curl -X GET '/jobs/bc7dc9d9a8eb306bff1f341319fb7926'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
@@ -149,18 +160,18 @@ $ curl -X GET '/jobs/21a544f8e5b08fb3de04a3c1e15c295f'
       "01-001.mp3",
       "01-002.mp3"
     ],
-    "uploadUrl": "http://localhost:50172/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20221007%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20221007T142626Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=7b0450640d310948fa8fd365e0f5a7cd6126ca126623f127659cd96de0457d8d"
+    "uploadUrl": "http://localhost:61535/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20221201%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20221201T000244Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=1325e4b9accaeea268a0362a1fb05fc48d94e5d569e6ae445182abf41f21f35a"
   },
-  "id": "21a544f8e5b08fb3de04a3c1e15c295f",
+  "id": "bc7dc9d9a8eb306bff1f341319fb7926",
   "status": "processing"
 }
 ```
 
 
-1m9s later:
+53s later:
 
 ```
-$ curl -X GET '/jobs/21a544f8e5b08fb3de04a3c1e15c295f'
+$ curl -X GET '/jobs/bc7dc9d9a8eb306bff1f341319fb7926'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
@@ -170,18 +181,20 @@ $ curl -X GET '/jobs/21a544f8e5b08fb3de04a3c1e15c295f'
       "01-001.mp3",
       "01-002.mp3"
     ],
-    "uploadUrl": "http://localhost:50172/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20221007%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20221007T142626Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=7b0450640d310948fa8fd365e0f5a7cd6126ca126623f127659cd96de0457d8d"
+    "uploadUrl": "http://localhost:61535/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20221201%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20221201T000244Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=1325e4b9accaeea268a0362a1fb05fc48d94e5d569e6ae445182abf41f21f35a"
   },
-  "id": "21a544f8e5b08fb3de04a3c1e15c295f",
-  "status": "uploading"
+  "id": "bc7dc9d9a8eb306bff1f341319fb7926",
+  "status": "uploading",
+  "result_media_duration": 2649000000000,
+  "result_file_bytes": 42580797
 }
 ```
 
 
-3s later:
+1s later:
 
 ```
-$ curl -X GET '/jobs/21a544f8e5b08fb3de04a3c1e15c295f'
+$ curl -X GET '/jobs/bc7dc9d9a8eb306bff1f341319fb7926'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
@@ -191,10 +204,12 @@ $ curl -X GET '/jobs/21a544f8e5b08fb3de04a3c1e15c295f'
       "01-001.mp3",
       "01-002.mp3"
     ],
-    "uploadUrl": "http://localhost:50172/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20221007%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20221007T142626Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=7b0450640d310948fa8fd365e0f5a7cd6126ca126623f127659cd96de0457d8d"
+    "uploadUrl": "http://localhost:61535/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20221201%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20221201T000244Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=1325e4b9accaeea268a0362a1fb05fc48d94e5d569e6ae445182abf41f21f35a"
   },
-  "id": "21a544f8e5b08fb3de04a3c1e15c295f",
-  "status": "complete"
+  "id": "bc7dc9d9a8eb306bff1f341319fb7926",
+  "status": "complete",
+  "result_media_duration": 2649000000000,
+  "result_file_bytes": 42580797
 }
 ```
 

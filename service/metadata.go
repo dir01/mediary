@@ -6,7 +6,7 @@ import (
 	"log"
 )
 
-var errUrlNotSupported = fmt.Errorf("url not supported")
+var ErrUrlNotSupported = fmt.Errorf("url not supported")
 
 type Metadata struct {
 	URL   string         `json:"url"`
@@ -27,7 +27,7 @@ func (svc *Service) GetMetadata(ctx context.Context, url string) (*Metadata, err
 	}
 
 	if !svc.downloader.AcceptsURL(url) {
-		return nil, errUrlNotSupported
+		return nil, ErrUrlNotSupported
 	}
 
 	metadata, err := svc.downloader.GetMetadata(ctx, url)

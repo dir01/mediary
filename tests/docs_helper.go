@@ -28,7 +28,7 @@ func (h *docsHelper) InsertText(text string, args ...interface{}) {
 }
 
 func (h *docsHelper) PerformRequestForDocs(
-	method, url string, body io.Reader, expectedStatusCode int,
+	method, url string, body io.ReadSeeker, expectedStatusCode int,
 	responseHandler func(*httptest.ResponseRecorder),
 ) {
 	resp := h.PerformRequest(method, url, body, expectedStatusCode, responseHandler)
@@ -39,6 +39,7 @@ func (h *docsHelper) PerformRequestForDocs(
 
 	var reqString string
 	if body != nil {
+		body.Seek(0, io.SeekStart)
 		reqBodyBytes, err := ioutil.ReadAll(body)
 		if err != nil {
 			h.t.Fatalf("error reading request body: %v", err)

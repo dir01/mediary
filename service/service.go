@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -66,6 +67,12 @@ type Storage interface {
 //go:generate minimock -i MediaProcessor -o ./mocks/media_processor_mock.go -g
 type MediaProcessor interface {
 	Concatenate(ctx context.Context, filepaths []string, audioCodec string) (resultFilepath string, err error)
+	GetInfo(ctx context.Context, filepath string) (info *MediaInfo, err error)
+}
+
+type MediaInfo struct {
+	Duration     time.Duration
+	FileLenBytes int64
 }
 
 //go:generate minimock -i Uploader -o ./mocks/uploader_mock.go -g

@@ -152,7 +152,7 @@ So all consecutive requests for the same URL will return the same metadata, and 
 POST to '''/jobs''' will schedule for background execution a process of downloading, converting/processing and uploading the media.
 Only required parameters are '''url''' and '''type'''. '''type''' signifies the type of operation to be performed. 
 Each operation can require some additional parameters, passed as '''params'''. For example, '''concatenate''' job
-requires a list of files to be concatenated and, optionally, an '''audioCoded''' to be used for the output file.`)
+requires a list of files to be concatenated and, optionally, an '''audioCodec''' to be used for the output file.`)
 
 		presignClient := s3.NewPresignClient(s3Client)
 		presignResult, err := presignClient.PresignPutObject(context.TODO(), &s3.PutObjectInput{

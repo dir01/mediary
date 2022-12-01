@@ -87,7 +87,7 @@ func (r *RedisJobsQueue) Publish(ctx context.Context, jobId string) error {
 func (r *RedisJobsQueue) Subscribe(f func(jobId string) error) {
 	r.consumer.Register(r.streamName, func(msg *redisqueue.Message) error {
 		return retry(func() error {
-			// redisqueue does not seem to care about retries, so firs we'll try to retry in-process
+			// redisqueue does not seem to care about retries, so first we'll try to retry in-process
 			// interestingly, on server restart unacked messages will be re-scheduled, so we don't need to worry about that
 			// also, in case we die completely and consumer on another host will be started with another name,
 			// it will pick this message after `VisibilityTimeout` and will be able to process it

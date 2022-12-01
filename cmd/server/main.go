@@ -15,10 +15,12 @@ import (
 	"github.com/dir01/mediary/storage"
 	"github.com/dir01/mediary/uploader"
 	"github.com/go-redis/redis"
+	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 )
 
 func main() {
+	_ = godotenv.Load()
 	conf := config.New()
 	logger, err := zap.NewDevelopment()
 	if err != nil {

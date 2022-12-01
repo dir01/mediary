@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -28,6 +29,9 @@ func handleGetMetadata(svc *service.Service, timeout time.Duration) func(http.Re
 			return
 		} else if errors.Is(err, context.DeadlineExceeded) {
 			respond(w, http.StatusAccepted, `{"status": "accepted"}`)
+			return
+		} else if errors.Is(err, service.ErrUrlNotSupported) {
+			respond(w, http.StatusBadRequest, fmt.Errorf("url not supported: %w", err))
 			return
 		} else {
 			respond(w, http.StatusInternalServerError, err)

@@ -12,6 +12,7 @@ require (
 	github.com/docker/go-connections v0.4.0
 	github.com/go-redis/redis v6.15.9+incompatible
 	github.com/gojuno/minimock/v3 v3.0.10
+	github.com/joho/godotenv v1.4.0
 	github.com/pkg/errors v0.9.1
 	github.com/robinjoseph08/redisqueue v1.1.0
 	github.com/testcontainers/testcontainers-go v0.14.0
