@@ -14,7 +14,7 @@ import (
 
 func NewRedisJobsQueue(redisClient *redis.Client, logger *zap.Logger, concurrency int, keyPrefix string) (*RedisJobsQueue, error) {
 	p, err := redisqueue.NewProducerWithOptions(&redisqueue.ProducerOptions{
-		StreamMaxLength:      1000,
+		StreamMaxLength:      100,
 		ApproximateMaxLength: true,
 		RedisClient:          redisClient,
 	})
