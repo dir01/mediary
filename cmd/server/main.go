@@ -42,13 +42,13 @@ func main() {
 	redisClient := redis.NewClient(opt)
 	defer func() { _ = redisClient.Close() }()
 
-	queue, err := jobs_queue.NewRedisJobsQueue(redisClient, logger, 10, "mediary:")
+	queue, err := jobs_queue.NewRedisJobsQueue(redisClient, logger, 10, "mediary")
 	if err != nil {
 		log.Fatalf("error initializing redis jobs queue: %v", err)
 	}
 	defer queue.Shutdown()
 
-	store := storage.NewRedisStorage(redisClient, "mediary:")
+	store := storage.NewRedisStorage(redisClient, "mediary")
 
 	mediaProc, err := media_processor.NewFFMpegMediaProcessor(logger)
 	if err != nil {
