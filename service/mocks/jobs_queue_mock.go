@@ -15,11 +15,17 @@ import (
 type JobsQueueMock struct {
 	t minimock.Tester
 
-	funcPublish          func(ctx context.Context, jobId string) (err error)
-	inspectFuncPublish   func(ctx context.Context, jobId string)
+	funcPublish          func(ctx context.Context, jobType string, payload any) (err error)
+	inspectFuncPublish   func(ctx context.Context, jobType string, payload any)
 	afterPublishCounter  uint64
 	beforePublishCounter uint64
 	PublishMock          mJobsQueueMockPublish
+
+	funcRun          func()
+	inspectFuncRun   func()
+	afterRunCounter  uint64
+	beforeRunCounter uint64
+	RunMock          mJobsQueueMockRun
 
 	funcShutdown          func()
 	inspectFuncShutdown   func()
@@ -27,8 +33,8 @@ type JobsQueueMock struct {
 	beforeShutdownCounter uint64
 	ShutdownMock          mJobsQueueMockShutdown
 
-	funcSubscribe          func(f1 func(jobId string) error)
-	inspectFuncSubscribe   func(f1 func(jobId string) error)
+	funcSubscribe          func(ctx context.Context, jobType string, f func(payloadBytes []byte) error)
+	inspectFuncSubscribe   func(ctx context.Context, jobType string, f func(payloadBytes []byte) error)
 	afterSubscribeCounter  uint64
 	beforeSubscribeCounter uint64
 	SubscribeMock          mJobsQueueMockSubscribe
@@ -43,6 +49,8 @@ func NewJobsQueueMock(t minimock.Tester) *JobsQueueMock {
 
 	m.PublishMock = mJobsQueueMockPublish{mock: m}
 	m.PublishMock.callArgs = []*JobsQueueMockPublishParams{}
+
+	m.RunMock = mJobsQueueMockRun{mock: m}
 
 	m.ShutdownMock = mJobsQueueMockShutdown{mock: m}
 
@@ -71,8 +79,9 @@ type JobsQueueMockPublishExpectation struct {
 
 // JobsQueueMockPublishParams contains parameters of the JobsQueue.Publish
 type JobsQueueMockPublishParams struct {
-	ctx   context.Context
-	jobId string
+	ctx     context.Context
+	jobType string
+	payload any
 }
 
 // JobsQueueMockPublishResults contains results of the JobsQueue.Publish
@@ -81,7 +90,7 @@ type JobsQueueMockPublishResults struct {
 }
 
 // Expect sets up expected params for JobsQueue.Publish
-func (mmPublish *mJobsQueueMockPublish) Expect(ctx context.Context, jobId string) *mJobsQueueMockPublish {
+func (mmPublish *mJobsQueueMockPublish) Expect(ctx context.Context, jobType string, payload any) *mJobsQueueMockPublish {
 	if mmPublish.mock.funcPublish != nil {
 		mmPublish.mock.t.Fatalf("JobsQueueMock.Publish mock is already set by Set")
 	}
@@ -90,7 +99,7 @@ func (mmPublish *mJobsQueueMockPublish) Expect(ctx context.Context, jobId string
 		mmPublish.defaultExpectation = &JobsQueueMockPublishExpectation{}
 	}
 
-	mmPublish.defaultExpectation.params = &JobsQueueMockPublishParams{ctx, jobId}
+	mmPublish.defaultExpectation.params = &JobsQueueMockPublishParams{ctx, jobType, payload}
 	for _, e := range mmPublish.expectations {
 		if minimock.Equal(e.params, mmPublish.defaultExpectation.params) {
 			mmPublish.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmPublish.defaultExpectation.params)
@@ -101,7 +110,7 @@ func (mmPublish *mJobsQueueMockPublish) Expect(ctx context.Context, jobId string
 }
 
 // Inspect accepts an inspector function that has same arguments as the JobsQueue.Publish
-func (mmPublish *mJobsQueueMockPublish) Inspect(f func(ctx context.Context, jobId string)) *mJobsQueueMockPublish {
+func (mmPublish *mJobsQueueMockPublish) Inspect(f func(ctx context.Context, jobType string, payload any)) *mJobsQueueMockPublish {
 	if mmPublish.mock.inspectFuncPublish != nil {
 		mmPublish.mock.t.Fatalf("Inspect function is already set for JobsQueueMock.Publish")
 	}
@@ -125,7 +134,7 @@ func (mmPublish *mJobsQueueMockPublish) Return(err error) *JobsQueueMock {
 }
 
 //Set uses given function f to mock the JobsQueue.Publish method
-func (mmPublish *mJobsQueueMockPublish) Set(f func(ctx context.Context, jobId string) (err error)) *JobsQueueMock {
+func (mmPublish *mJobsQueueMockPublish) Set(f func(ctx context.Context, jobType string, payload any) (err error)) *JobsQueueMock {
 	if mmPublish.defaultExpectation != nil {
 		mmPublish.mock.t.Fatalf("Default expectation is already set for the JobsQueue.Publish method")
 	}
@@ -140,14 +149,14 @@ func (mmPublish *mJobsQueueMockPublish) Set(f func(ctx context.Context, jobId st
 
 // When sets expectation for the JobsQueue.Publish which will trigger the result defined by the following
 // Then helper
-func (mmPublish *mJobsQueueMockPublish) When(ctx context.Context, jobId string) *JobsQueueMockPublishExpectation {
+func (mmPublish *mJobsQueueMockPublish) When(ctx context.Context, jobType string, payload any) *JobsQueueMockPublishExpectation {
 	if mmPublish.mock.funcPublish != nil {
 		mmPublish.mock.t.Fatalf("JobsQueueMock.Publish mock is already set by Set")
 	}
 
 	expectation := &JobsQueueMockPublishExpectation{
 		mock:   mmPublish.mock,
-		params: &JobsQueueMockPublishParams{ctx, jobId},
+		params: &JobsQueueMockPublishParams{ctx, jobType, payload},
 	}
 	mmPublish.expectations = append(mmPublish.expectations, expectation)
 	return expectation
@@ -160,15 +169,15 @@ func (e *JobsQueueMockPublishExpectation) Then(err error) *JobsQueueMock {
 }
 
 // Publish implements service.JobsQueue
-func (mmPublish *JobsQueueMock) Publish(ctx context.Context, jobId string) (err error) {
+func (mmPublish *JobsQueueMock) Publish(ctx context.Context, jobType string, payload any) (err error) {
 	mm_atomic.AddUint64(&mmPublish.beforePublishCounter, 1)
 	defer mm_atomic.AddUint64(&mmPublish.afterPublishCounter, 1)
 
 	if mmPublish.inspectFuncPublish != nil {
-		mmPublish.inspectFuncPublish(ctx, jobId)
+		mmPublish.inspectFuncPublish(ctx, jobType, payload)
 	}
 
-	mm_params := &JobsQueueMockPublishParams{ctx, jobId}
+	mm_params := &JobsQueueMockPublishParams{ctx, jobType, payload}
 
 	// Record call args
 	mmPublish.PublishMock.mutex.Lock()
@@ -185,7 +194,7 @@ func (mmPublish *JobsQueueMock) Publish(ctx context.Context, jobId string) (err 
 	if mmPublish.PublishMock.defaultExpectation != nil {
 		mm_atomic.AddUint64(&mmPublish.PublishMock.defaultExpectation.Counter, 1)
 		mm_want := mmPublish.PublishMock.defaultExpectation.params
-		mm_got := JobsQueueMockPublishParams{ctx, jobId}
+		mm_got := JobsQueueMockPublishParams{ctx, jobType, payload}
 		if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
 			mmPublish.t.Errorf("JobsQueueMock.Publish got unexpected parameters, want: %#v, got: %#v%s\n", *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
 		}
@@ -197,9 +206,9 @@ func (mmPublish *JobsQueueMock) Publish(ctx context.Context, jobId string) (err 
 		return (*mm_results).err
 	}
 	if mmPublish.funcPublish != nil {
-		return mmPublish.funcPublish(ctx, jobId)
+		return mmPublish.funcPublish(ctx, jobType, payload)
 	}
-	mmPublish.t.Fatalf("Unexpected call to JobsQueueMock.Publish. %v %v", ctx, jobId)
+	mmPublish.t.Fatalf("Unexpected call to JobsQueueMock.Publish. %v %v %v", ctx, jobType, payload)
 	return
 }
 
@@ -265,6 +274,141 @@ func (m *JobsQueueMock) MinimockPublishInspect() {
 	// if func was set then invocations count should be greater than zero
 	if m.funcPublish != nil && mm_atomic.LoadUint64(&m.afterPublishCounter) < 1 {
 		m.t.Error("Expected call to JobsQueueMock.Publish")
+	}
+}
+
+type mJobsQueueMockRun struct {
+	mock               *JobsQueueMock
+	defaultExpectation *JobsQueueMockRunExpectation
+	expectations       []*JobsQueueMockRunExpectation
+}
+
+// JobsQueueMockRunExpectation specifies expectation struct of the JobsQueue.Run
+type JobsQueueMockRunExpectation struct {
+	mock *JobsQueueMock
+
+	Counter uint64
+}
+
+// Expect sets up expected params for JobsQueue.Run
+func (mmRun *mJobsQueueMockRun) Expect() *mJobsQueueMockRun {
+	if mmRun.mock.funcRun != nil {
+		mmRun.mock.t.Fatalf("JobsQueueMock.Run mock is already set by Set")
+	}
+
+	if mmRun.defaultExpectation == nil {
+		mmRun.defaultExpectation = &JobsQueueMockRunExpectation{}
+	}
+
+	return mmRun
+}
+
+// Inspect accepts an inspector function that has same arguments as the JobsQueue.Run
+func (mmRun *mJobsQueueMockRun) Inspect(f func()) *mJobsQueueMockRun {
+	if mmRun.mock.inspectFuncRun != nil {
+		mmRun.mock.t.Fatalf("Inspect function is already set for JobsQueueMock.Run")
+	}
+
+	mmRun.mock.inspectFuncRun = f
+
+	return mmRun
+}
+
+// Return sets up results that will be returned by JobsQueue.Run
+func (mmRun *mJobsQueueMockRun) Return() *JobsQueueMock {
+	if mmRun.mock.funcRun != nil {
+		mmRun.mock.t.Fatalf("JobsQueueMock.Run mock is already set by Set")
+	}
+
+	if mmRun.defaultExpectation == nil {
+		mmRun.defaultExpectation = &JobsQueueMockRunExpectation{mock: mmRun.mock}
+	}
+
+	return mmRun.mock
+}
+
+//Set uses given function f to mock the JobsQueue.Run method
+func (mmRun *mJobsQueueMockRun) Set(f func()) *JobsQueueMock {
+	if mmRun.defaultExpectation != nil {
+		mmRun.mock.t.Fatalf("Default expectation is already set for the JobsQueue.Run method")
+	}
+
+	if len(mmRun.expectations) > 0 {
+		mmRun.mock.t.Fatalf("Some expectations are already set for the JobsQueue.Run method")
+	}
+
+	mmRun.mock.funcRun = f
+	return mmRun.mock
+}
+
+// Run implements service.JobsQueue
+func (mmRun *JobsQueueMock) Run() {
+	mm_atomic.AddUint64(&mmRun.beforeRunCounter, 1)
+	defer mm_atomic.AddUint64(&mmRun.afterRunCounter, 1)
+
+	if mmRun.inspectFuncRun != nil {
+		mmRun.inspectFuncRun()
+	}
+
+	if mmRun.RunMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmRun.RunMock.defaultExpectation.Counter, 1)
+
+		return
+
+	}
+	if mmRun.funcRun != nil {
+		mmRun.funcRun()
+		return
+	}
+	mmRun.t.Fatalf("Unexpected call to JobsQueueMock.Run.")
+
+}
+
+// RunAfterCounter returns a count of finished JobsQueueMock.Run invocations
+func (mmRun *JobsQueueMock) RunAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmRun.afterRunCounter)
+}
+
+// RunBeforeCounter returns a count of JobsQueueMock.Run invocations
+func (mmRun *JobsQueueMock) RunBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmRun.beforeRunCounter)
+}
+
+// MinimockRunDone returns true if the count of the Run invocations corresponds
+// the number of defined expectations
+func (m *JobsQueueMock) MinimockRunDone() bool {
+	for _, e := range m.RunMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	// if default expectation was set then invocations count should be greater than zero
+	if m.RunMock.defaultExpectation != nil && mm_atomic.LoadUint64(&m.afterRunCounter) < 1 {
+		return false
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcRun != nil && mm_atomic.LoadUint64(&m.afterRunCounter) < 1 {
+		return false
+	}
+	return true
+}
+
+// MinimockRunInspect logs each unmet expectation
+func (m *JobsQueueMock) MinimockRunInspect() {
+	for _, e := range m.RunMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Error("Expected call to JobsQueueMock.Run")
+		}
+	}
+
+	// if default expectation was set then invocations count should be greater than zero
+	if m.RunMock.defaultExpectation != nil && mm_atomic.LoadUint64(&m.afterRunCounter) < 1 {
+		m.t.Error("Expected call to JobsQueueMock.Run")
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcRun != nil && mm_atomic.LoadUint64(&m.afterRunCounter) < 1 {
+		m.t.Error("Expected call to JobsQueueMock.Run")
 	}
 }
 
@@ -422,11 +566,13 @@ type JobsQueueMockSubscribeExpectation struct {
 
 // JobsQueueMockSubscribeParams contains parameters of the JobsQueue.Subscribe
 type JobsQueueMockSubscribeParams struct {
-	f1 func(jobId string) error
+	ctx     context.Context
+	jobType string
+	f       func(payloadBytes []byte) error
 }
 
 // Expect sets up expected params for JobsQueue.Subscribe
-func (mmSubscribe *mJobsQueueMockSubscribe) Expect(f1 func(jobId string) error) *mJobsQueueMockSubscribe {
+func (mmSubscribe *mJobsQueueMockSubscribe) Expect(ctx context.Context, jobType string, f func(payloadBytes []byte) error) *mJobsQueueMockSubscribe {
 	if mmSubscribe.mock.funcSubscribe != nil {
 		mmSubscribe.mock.t.Fatalf("JobsQueueMock.Subscribe mock is already set by Set")
 	}
@@ -435,7 +581,7 @@ func (mmSubscribe *mJobsQueueMockSubscribe) Expect(f1 func(jobId string) error) 
 		mmSubscribe.defaultExpectation = &JobsQueueMockSubscribeExpectation{}
 	}
 
-	mmSubscribe.defaultExpectation.params = &JobsQueueMockSubscribeParams{f1}
+	mmSubscribe.defaultExpectation.params = &JobsQueueMockSubscribeParams{ctx, jobType, f}
 	for _, e := range mmSubscribe.expectations {
 		if minimock.Equal(e.params, mmSubscribe.defaultExpectation.params) {
 			mmSubscribe.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmSubscribe.defaultExpectation.params)
@@ -446,7 +592,7 @@ func (mmSubscribe *mJobsQueueMockSubscribe) Expect(f1 func(jobId string) error) 
 }
 
 // Inspect accepts an inspector function that has same arguments as the JobsQueue.Subscribe
-func (mmSubscribe *mJobsQueueMockSubscribe) Inspect(f func(f1 func(jobId string) error)) *mJobsQueueMockSubscribe {
+func (mmSubscribe *mJobsQueueMockSubscribe) Inspect(f func(ctx context.Context, jobType string, f func(payloadBytes []byte) error)) *mJobsQueueMockSubscribe {
 	if mmSubscribe.mock.inspectFuncSubscribe != nil {
 		mmSubscribe.mock.t.Fatalf("Inspect function is already set for JobsQueueMock.Subscribe")
 	}
@@ -470,7 +616,7 @@ func (mmSubscribe *mJobsQueueMockSubscribe) Return() *JobsQueueMock {
 }
 
 //Set uses given function f to mock the JobsQueue.Subscribe method
-func (mmSubscribe *mJobsQueueMockSubscribe) Set(f func(f1 func(jobId string) error)) *JobsQueueMock {
+func (mmSubscribe *mJobsQueueMockSubscribe) Set(f func(ctx context.Context, jobType string, f func(payloadBytes []byte) error)) *JobsQueueMock {
 	if mmSubscribe.defaultExpectation != nil {
 		mmSubscribe.mock.t.Fatalf("Default expectation is already set for the JobsQueue.Subscribe method")
 	}
@@ -484,15 +630,15 @@ func (mmSubscribe *mJobsQueueMockSubscribe) Set(f func(f1 func(jobId string) err
 }
 
 // Subscribe implements service.JobsQueue
-func (mmSubscribe *JobsQueueMock) Subscribe(f1 func(jobId string) error) {
+func (mmSubscribe *JobsQueueMock) Subscribe(ctx context.Context, jobType string, f func(payloadBytes []byte) error) {
 	mm_atomic.AddUint64(&mmSubscribe.beforeSubscribeCounter, 1)
 	defer mm_atomic.AddUint64(&mmSubscribe.afterSubscribeCounter, 1)
 
 	if mmSubscribe.inspectFuncSubscribe != nil {
-		mmSubscribe.inspectFuncSubscribe(f1)
+		mmSubscribe.inspectFuncSubscribe(ctx, jobType, f)
 	}
 
-	mm_params := &JobsQueueMockSubscribeParams{f1}
+	mm_params := &JobsQueueMockSubscribeParams{ctx, jobType, f}
 
 	// Record call args
 	mmSubscribe.SubscribeMock.mutex.Lock()
@@ -509,7 +655,7 @@ func (mmSubscribe *JobsQueueMock) Subscribe(f1 func(jobId string) error) {
 	if mmSubscribe.SubscribeMock.defaultExpectation != nil {
 		mm_atomic.AddUint64(&mmSubscribe.SubscribeMock.defaultExpectation.Counter, 1)
 		mm_want := mmSubscribe.SubscribeMock.defaultExpectation.params
-		mm_got := JobsQueueMockSubscribeParams{f1}
+		mm_got := JobsQueueMockSubscribeParams{ctx, jobType, f}
 		if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
 			mmSubscribe.t.Errorf("JobsQueueMock.Subscribe got unexpected parameters, want: %#v, got: %#v%s\n", *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
 		}
@@ -518,10 +664,10 @@ func (mmSubscribe *JobsQueueMock) Subscribe(f1 func(jobId string) error) {
 
 	}
 	if mmSubscribe.funcSubscribe != nil {
-		mmSubscribe.funcSubscribe(f1)
+		mmSubscribe.funcSubscribe(ctx, jobType, f)
 		return
 	}
-	mmSubscribe.t.Fatalf("Unexpected call to JobsQueueMock.Subscribe. %v", f1)
+	mmSubscribe.t.Fatalf("Unexpected call to JobsQueueMock.Subscribe. %v %v %v", ctx, jobType, f)
 
 }
 
@@ -595,6 +741,8 @@ func (m *JobsQueueMock) MinimockFinish() {
 	if !m.minimockDone() {
 		m.MinimockPublishInspect()
 
+		m.MinimockRunInspect()
+
 		m.MinimockShutdownInspect()
 
 		m.MinimockSubscribeInspect()
@@ -622,6 +770,7 @@ func (m *JobsQueueMock) minimockDone() bool {
 	done := true
 	return done &&
 		m.MinimockPublishDone() &&
+		m.MinimockRunDone() &&
 		m.MinimockShutdownDone() &&
 		m.MinimockSubscribeDone()
 }

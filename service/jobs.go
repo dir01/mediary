@@ -76,7 +76,7 @@ func (svc *Service) CreateJob(ctx context.Context, params *JobParams) (*Job, err
 	}
 
 	svc.log.Debug("publishing job", zap.String("jobID", jobID))
-	if err := svc.jobsQueue.Publish(ctx, jobState.ID); err != nil {
+	if err := svc.jobsQueue.Publish(ctx, "", jobState.ID); err != nil {
 		svc.log.Debug("failed to publish job", zap.String("jobID", jobID), zap.Error(err))
 		return nil, err
 	}
@@ -90,7 +90,11 @@ func (svc *Service) GetJob(ctx context.Context, id string) (*Job, error) {
 
 // onPublishedJob is a callback that is invoked when a job is published to the jobs queue
 // actual job is done by the corresponding flow
-func (svc *Service) onPublishedJob(jobID string) error {
+func (svc *Service) onPublishedJob(payload []byte) error {
+	var jobID string
+	if err := json.Unmarshal(payload, &jobID); err != nil {
+		return fmt.Errorf("failed to unmarshal job id: %w", err)
+	}
 	svc.log.Debug("started onPublishedJob", zap.String("jobID", jobID))
 
 	jobState, err := svc.storage.GetJob(context.Background(), jobID)

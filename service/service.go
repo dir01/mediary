@@ -23,7 +23,8 @@ func NewService(
 		uploader:       uploader,
 		log:            logger,
 	}
-	jobsQueue.Subscribe(svc.onPublishedJob)
+	jobsQueue.Subscribe(context.Background(), "", svc.onPublishedJob)
+	jobsQueue.Run()
 	return svc
 }
 
@@ -51,9 +52,10 @@ type Downloader interface {
 
 //go:generate minimock -i JobsQueue -o ./mocks/jobs_queue_mock.go -g
 type JobsQueue interface {
-	Publish(ctx context.Context, jobId string) error
-	Subscribe(func(jobId string) error)
+	Publish(ctx context.Context, jobType string, payload any) error
+	Subscribe(ctx context.Context, jobType string, f func(payloadBytes []byte) error)
 	Shutdown()
+	Run()
 }
 
 //go:generate minimock -i Storage -o ./mocks/storage_mock.go -g

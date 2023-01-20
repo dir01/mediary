@@ -8,6 +8,7 @@ import (
 	mm_atomic "sync/atomic"
 	mm_time "time"
 
+	mm_service "github.com/dir01/mediary/service"
 	"github.com/gojuno/minimock/v3"
 )
 
@@ -20,6 +21,12 @@ type MediaProcessorMock struct {
 	afterConcatenateCounter  uint64
 	beforeConcatenateCounter uint64
 	ConcatenateMock          mMediaProcessorMockConcatenate
+
+	funcGetInfo          func(ctx context.Context, filepath string) (info *mm_service.MediaInfo, err error)
+	inspectFuncGetInfo   func(ctx context.Context, filepath string)
+	afterGetInfoCounter  uint64
+	beforeGetInfoCounter uint64
+	GetInfoMock          mMediaProcessorMockGetInfo
 }
 
 // NewMediaProcessorMock returns a mock for service.MediaProcessor
@@ -31,6 +38,9 @@ func NewMediaProcessorMock(t minimock.Tester) *MediaProcessorMock {
 
 	m.ConcatenateMock = mMediaProcessorMockConcatenate{mock: m}
 	m.ConcatenateMock.callArgs = []*MediaProcessorMockConcatenateParams{}
+
+	m.GetInfoMock = mMediaProcessorMockGetInfo{mock: m}
+	m.GetInfoMock.callArgs = []*MediaProcessorMockGetInfoParams{}
 
 	return m
 }
@@ -253,10 +263,229 @@ func (m *MediaProcessorMock) MinimockConcatenateInspect() {
 	}
 }
 
+type mMediaProcessorMockGetInfo struct {
+	mock               *MediaProcessorMock
+	defaultExpectation *MediaProcessorMockGetInfoExpectation
+	expectations       []*MediaProcessorMockGetInfoExpectation
+
+	callArgs []*MediaProcessorMockGetInfoParams
+	mutex    sync.RWMutex
+}
+
+// MediaProcessorMockGetInfoExpectation specifies expectation struct of the MediaProcessor.GetInfo
+type MediaProcessorMockGetInfoExpectation struct {
+	mock    *MediaProcessorMock
+	params  *MediaProcessorMockGetInfoParams
+	results *MediaProcessorMockGetInfoResults
+	Counter uint64
+}
+
+// MediaProcessorMockGetInfoParams contains parameters of the MediaProcessor.GetInfo
+type MediaProcessorMockGetInfoParams struct {
+	ctx      context.Context
+	filepath string
+}
+
+// MediaProcessorMockGetInfoResults contains results of the MediaProcessor.GetInfo
+type MediaProcessorMockGetInfoResults struct {
+	info *mm_service.MediaInfo
+	err  error
+}
+
+// Expect sets up expected params for MediaProcessor.GetInfo
+func (mmGetInfo *mMediaProcessorMockGetInfo) Expect(ctx context.Context, filepath string) *mMediaProcessorMockGetInfo {
+	if mmGetInfo.mock.funcGetInfo != nil {
+		mmGetInfo.mock.t.Fatalf("MediaProcessorMock.GetInfo mock is already set by Set")
+	}
+
+	if mmGetInfo.defaultExpectation == nil {
+		mmGetInfo.defaultExpectation = &MediaProcessorMockGetInfoExpectation{}
+	}
+
+	mmGetInfo.defaultExpectation.params = &MediaProcessorMockGetInfoParams{ctx, filepath}
+	for _, e := range mmGetInfo.expectations {
+		if minimock.Equal(e.params, mmGetInfo.defaultExpectation.params) {
+			mmGetInfo.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmGetInfo.defaultExpectation.params)
+		}
+	}
+
+	return mmGetInfo
+}
+
+// Inspect accepts an inspector function that has same arguments as the MediaProcessor.GetInfo
+func (mmGetInfo *mMediaProcessorMockGetInfo) Inspect(f func(ctx context.Context, filepath string)) *mMediaProcessorMockGetInfo {
+	if mmGetInfo.mock.inspectFuncGetInfo != nil {
+		mmGetInfo.mock.t.Fatalf("Inspect function is already set for MediaProcessorMock.GetInfo")
+	}
+
+	mmGetInfo.mock.inspectFuncGetInfo = f
+
+	return mmGetInfo
+}
+
+// Return sets up results that will be returned by MediaProcessor.GetInfo
+func (mmGetInfo *mMediaProcessorMockGetInfo) Return(info *mm_service.MediaInfo, err error) *MediaProcessorMock {
+	if mmGetInfo.mock.funcGetInfo != nil {
+		mmGetInfo.mock.t.Fatalf("MediaProcessorMock.GetInfo mock is already set by Set")
+	}
+
+	if mmGetInfo.defaultExpectation == nil {
+		mmGetInfo.defaultExpectation = &MediaProcessorMockGetInfoExpectation{mock: mmGetInfo.mock}
+	}
+	mmGetInfo.defaultExpectation.results = &MediaProcessorMockGetInfoResults{info, err}
+	return mmGetInfo.mock
+}
+
+//Set uses given function f to mock the MediaProcessor.GetInfo method
+func (mmGetInfo *mMediaProcessorMockGetInfo) Set(f func(ctx context.Context, filepath string) (info *mm_service.MediaInfo, err error)) *MediaProcessorMock {
+	if mmGetInfo.defaultExpectation != nil {
+		mmGetInfo.mock.t.Fatalf("Default expectation is already set for the MediaProcessor.GetInfo method")
+	}
+
+	if len(mmGetInfo.expectations) > 0 {
+		mmGetInfo.mock.t.Fatalf("Some expectations are already set for the MediaProcessor.GetInfo method")
+	}
+
+	mmGetInfo.mock.funcGetInfo = f
+	return mmGetInfo.mock
+}
+
+// When sets expectation for the MediaProcessor.GetInfo which will trigger the result defined by the following
+// Then helper
+func (mmGetInfo *mMediaProcessorMockGetInfo) When(ctx context.Context, filepath string) *MediaProcessorMockGetInfoExpectation {
+	if mmGetInfo.mock.funcGetInfo != nil {
+		mmGetInfo.mock.t.Fatalf("MediaProcessorMock.GetInfo mock is already set by Set")
+	}
+
+	expectation := &MediaProcessorMockGetInfoExpectation{
+		mock:   mmGetInfo.mock,
+		params: &MediaProcessorMockGetInfoParams{ctx, filepath},
+	}
+	mmGetInfo.expectations = append(mmGetInfo.expectations, expectation)
+	return expectation
+}
+
+// Then sets up MediaProcessor.GetInfo return parameters for the expectation previously defined by the When method
+func (e *MediaProcessorMockGetInfoExpectation) Then(info *mm_service.MediaInfo, err error) *MediaProcessorMock {
+	e.results = &MediaProcessorMockGetInfoResults{info, err}
+	return e.mock
+}
+
+// GetInfo implements service.MediaProcessor
+func (mmGetInfo *MediaProcessorMock) GetInfo(ctx context.Context, filepath string) (info *mm_service.MediaInfo, err error) {
+	mm_atomic.AddUint64(&mmGetInfo.beforeGetInfoCounter, 1)
+	defer mm_atomic.AddUint64(&mmGetInfo.afterGetInfoCounter, 1)
+
+	if mmGetInfo.inspectFuncGetInfo != nil {
+		mmGetInfo.inspectFuncGetInfo(ctx, filepath)
+	}
+
+	mm_params := &MediaProcessorMockGetInfoParams{ctx, filepath}
+
+	// Record call args
+	mmGetInfo.GetInfoMock.mutex.Lock()
+	mmGetInfo.GetInfoMock.callArgs = append(mmGetInfo.GetInfoMock.callArgs, mm_params)
+	mmGetInfo.GetInfoMock.mutex.Unlock()
+
+	for _, e := range mmGetInfo.GetInfoMock.expectations {
+		if minimock.Equal(e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.info, e.results.err
+		}
+	}
+
+	if mmGetInfo.GetInfoMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmGetInfo.GetInfoMock.defaultExpectation.Counter, 1)
+		mm_want := mmGetInfo.GetInfoMock.defaultExpectation.params
+		mm_got := MediaProcessorMockGetInfoParams{ctx, filepath}
+		if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmGetInfo.t.Errorf("MediaProcessorMock.GetInfo got unexpected parameters, want: %#v, got: %#v%s\n", *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmGetInfo.GetInfoMock.defaultExpectation.results
+		if mm_results == nil {
+			mmGetInfo.t.Fatal("No results are set for the MediaProcessorMock.GetInfo")
+		}
+		return (*mm_results).info, (*mm_results).err
+	}
+	if mmGetInfo.funcGetInfo != nil {
+		return mmGetInfo.funcGetInfo(ctx, filepath)
+	}
+	mmGetInfo.t.Fatalf("Unexpected call to MediaProcessorMock.GetInfo. %v %v", ctx, filepath)
+	return
+}
+
+// GetInfoAfterCounter returns a count of finished MediaProcessorMock.GetInfo invocations
+func (mmGetInfo *MediaProcessorMock) GetInfoAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmGetInfo.afterGetInfoCounter)
+}
+
+// GetInfoBeforeCounter returns a count of MediaProcessorMock.GetInfo invocations
+func (mmGetInfo *MediaProcessorMock) GetInfoBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmGetInfo.beforeGetInfoCounter)
+}
+
+// Calls returns a list of arguments used in each call to MediaProcessorMock.GetInfo.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmGetInfo *mMediaProcessorMockGetInfo) Calls() []*MediaProcessorMockGetInfoParams {
+	mmGetInfo.mutex.RLock()
+
+	argCopy := make([]*MediaProcessorMockGetInfoParams, len(mmGetInfo.callArgs))
+	copy(argCopy, mmGetInfo.callArgs)
+
+	mmGetInfo.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockGetInfoDone returns true if the count of the GetInfo invocations corresponds
+// the number of defined expectations
+func (m *MediaProcessorMock) MinimockGetInfoDone() bool {
+	for _, e := range m.GetInfoMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	// if default expectation was set then invocations count should be greater than zero
+	if m.GetInfoMock.defaultExpectation != nil && mm_atomic.LoadUint64(&m.afterGetInfoCounter) < 1 {
+		return false
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcGetInfo != nil && mm_atomic.LoadUint64(&m.afterGetInfoCounter) < 1 {
+		return false
+	}
+	return true
+}
+
+// MinimockGetInfoInspect logs each unmet expectation
+func (m *MediaProcessorMock) MinimockGetInfoInspect() {
+	for _, e := range m.GetInfoMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to MediaProcessorMock.GetInfo with params: %#v", *e.params)
+		}
+	}
+
+	// if default expectation was set then invocations count should be greater than zero
+	if m.GetInfoMock.defaultExpectation != nil && mm_atomic.LoadUint64(&m.afterGetInfoCounter) < 1 {
+		if m.GetInfoMock.defaultExpectation.params == nil {
+			m.t.Error("Expected call to MediaProcessorMock.GetInfo")
+		} else {
+			m.t.Errorf("Expected call to MediaProcessorMock.GetInfo with params: %#v", *m.GetInfoMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcGetInfo != nil && mm_atomic.LoadUint64(&m.afterGetInfoCounter) < 1 {
+		m.t.Error("Expected call to MediaProcessorMock.GetInfo")
+	}
+}
+
 // MinimockFinish checks that all mocked methods have been called the expected number of times
 func (m *MediaProcessorMock) MinimockFinish() {
 	if !m.minimockDone() {
 		m.MinimockConcatenateInspect()
+
+		m.MinimockGetInfoInspect()
 		m.t.FailNow()
 	}
 }
@@ -280,5 +509,6 @@ func (m *MediaProcessorMock) MinimockWait(timeout mm_time.Duration) {
 func (m *MediaProcessorMock) minimockDone() bool {
 	done := true
 	return done &&
-		m.MinimockConcatenateDone()
+		m.MinimockConcatenateDone() &&
+		m.MinimockGetInfoDone()
 }

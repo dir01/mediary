@@ -79,8 +79,9 @@ func TestGetMetadata(t *testing.T) {
 			storage := mocks.NewStorageMock(mc)
 			queue := mocks.NewJobsQueueMock(mc)
 			queue.
-				SubscribeMock.Set(func(f1 func(jobId string) error) {}).
-				PublishMock.Set(func(ctx context.Context, jobId string) (err error) { return nil })
+				SubscribeMock.Set(func(ctx context.Context, jobType string, f1 func(payloadBytes []byte) error) {}).
+				PublishMock.Set(func(ctx context.Context, jobType string, payload any) (err error) { return nil }).
+				RunMock.Set(func() {})
 			svc := service.NewService(dwn, storage, queue, nil, nil, logger)
 
 			storage.GetMetadataMock.

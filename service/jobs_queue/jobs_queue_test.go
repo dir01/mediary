@@ -1,22 +1,22 @@
-package jobs_queue
+package jobsqueue
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/dir01/mediary/service"
 	"github.com/dir01/mediary/tests"
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v8"
 	"go.uber.org/zap"
 )
 
 var logger, _ = zap.NewDevelopment()
 
-func TestNewRedisJobsQueue(t *testing.T) {
+func TestRedisJobsQueue(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 	defer cancel()
 
@@ -32,14 +32,13 @@ func TestNewRedisJobsQueue(t *testing.T) {
 
 	t.Run("job is persisted", func(t *testing.T) {
 		// First publish, then subscribe. Job should arrive
-		queue, err := NewRedisJobsQueue(redisClient, logger, 10, randomPrefix())
+		queue, err := NewRedisJobsQueue(redisClient, 10, randomPrefix(), logger)
 		if err != nil {
-			t.Errorf("error creating redis jobs queue: %v", err)
+			t.Errorf("error creating redis job queue: %v", err)
 		}
 		defer queue.Shutdown()
 
-		job := &service.Job{ID: "some-id"}
-		err = queue.Publish(ctx, job.ID)
+		err = queue.Publish(ctx, "some-job-type", map[string]string{"foo": "bar"})
 		if err != nil {
 			t.Errorf("error publishing job: %v", err)
 		}
@@ -48,14 +47,20 @@ func TestNewRedisJobsQueue(t *testing.T) {
 		callCountMutex.Lock()
 		callCount := 0
 		callCountMutex.Unlock()
-		queue.Subscribe(func(jobID string) error {
+		queue.Subscribe(ctx, "some-job-type", func(payloadBytes []byte) error {
+			var result map[string]string
+			err := json.Unmarshal(payloadBytes, &result)
+			if err != nil {
+				return err
+			}
 			callCountMutex.Lock()
 			defer callCountMutex.Unlock()
 			callCount++
 			return nil
 		})
+		queue.Run()
 
-		if eventually(2*time.Second, func() bool {
+		if eventually(20*time.Second, func() bool {
 			callCountMutex.RLock()
 			defer callCountMutex.RUnlock()
 			return callCount == 1
@@ -66,14 +71,13 @@ func TestNewRedisJobsQueue(t *testing.T) {
 
 	t.Run("job is retried", func(t *testing.T) {
 		// If job is failed once, it will be retried shortly after
-		queue, err := NewRedisJobsQueue(redisClient, logger, 10, randomPrefix())
+		queue, err := NewRedisJobsQueue(redisClient, 10, randomPrefix(), logger)
 		if err != nil {
-			t.Errorf("error creating redis jobs queue: %v", err)
+			t.Errorf("error creating redis job queue: %v", err)
 		}
 		defer queue.Shutdown()
 
-		job := &service.Job{ID: "some-id"}
-		err = queue.Publish(ctx, job.ID)
+		err = queue.Publish(ctx, "some-job-type", map[string]string{"foo": "bar"})
 		if err != nil {
 			t.Errorf("error publishing job: %v", err)
 		}
@@ -82,7 +86,7 @@ func TestNewRedisJobsQueue(t *testing.T) {
 		callCountMutex.Lock()
 		callCount := 0
 		callCountMutex.Unlock()
-		queue.Subscribe(func(jobID string) error {
+		queue.Subscribe(ctx, "some-job-type", func(payloadBytes []byte) error {
 			callCountMutex.Lock()
 			defer callCountMutex.Unlock()
 			callCount++
@@ -91,6 +95,8 @@ func TestNewRedisJobsQueue(t *testing.T) {
 			}
 			return nil
 		})
+
+		queue.Run()
 
 		if eventually(60*time.Second, func() bool {
 			callCountMutex.RLock()

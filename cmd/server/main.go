@@ -14,7 +14,7 @@ import (
 	"github.com/dir01/mediary/service/jobs_queue"
 	"github.com/dir01/mediary/storage"
 	"github.com/dir01/mediary/uploader"
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v8"
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 )
@@ -38,11 +38,11 @@ func main() {
 	dwn := downloader.NewDownloader([]service.Downloader{torrentDownloader})
 
 	// redisClient will be used both for storage and queue, mostly because I've found some cloud redis with a free tier
-	opt, _ := redis.ParseURL(conf.RedisUrlOrDie())
+	opt, _ := redis.ParseURL(conf.MustGetRedisURL())
 	redisClient := redis.NewClient(opt)
 	defer func() { _ = redisClient.Close() }()
 
-	queue, err := jobs_queue.NewRedisJobsQueue(redisClient, logger, 10, "mediary")
+	queue, err := jobsqueue.NewRedisJobsQueue(redisClient, 10, "mediary", logger)
 	if err != nil {
 		log.Fatalf("error initializing redis jobs queue: %v", err)
 	}

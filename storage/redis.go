@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/dir01/mediary/service"
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v8"
 )
 
 func NewRedisStorage(rediClient *redis.Client, keyPrefix string) service.Storage {
@@ -22,7 +22,7 @@ type RedisStorage struct {
 }
 
 func (s *RedisStorage) GetJob(ctx context.Context, id string) (*service.Job, error) {
-	jobBytes, err := s.redisClient.Get(s.jobKey(id)).Bytes()
+	jobBytes, err := s.redisClient.Get(ctx, s.jobKey(id)).Bytes()
 	if err != nil {
 		if err == redis.Nil {
 			return nil, nil
@@ -41,11 +41,11 @@ func (s *RedisStorage) SaveJob(ctx context.Context, job *service.Job) error {
 	if err != nil {
 		return err
 	}
-	return s.redisClient.Set(s.jobKey(job.ID), jobBytes, 0).Err()
+	return s.redisClient.Set(ctx, s.jobKey(job.ID), jobBytes, 0).Err()
 }
 
 func (s *RedisStorage) GetMetadata(ctx context.Context, url string) (*service.Metadata, error) {
-	metaBytes, err := s.redisClient.Get(s.metadataKey(url)).Bytes()
+	metaBytes, err := s.redisClient.Get(ctx, s.metadataKey(url)).Bytes()
 	if err != nil {
 		if err == redis.Nil {
 			return nil, nil
@@ -64,7 +64,7 @@ func (s *RedisStorage) SaveMetadata(ctx context.Context, metadata *service.Metad
 	if err != nil {
 		return err
 	}
-	return s.redisClient.Set(s.metadataKey(metadata.URL), metaBytes, 0).Err()
+	return s.redisClient.Set(ctx, s.metadataKey(metadata.URL), metaBytes, 0).Err()
 }
 
 func (s *RedisStorage) jobKey(id string) string {
