@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func assertMatchesGoldenFile(t *testing.T, data []byte, filename string) {
+func AssertMatchesGoldenFile(t *testing.T, data []byte, filename string) {
 	filepath := path.Join("testdata", filename)
 	_, forceUpdate := os.LookupEnv("UPDATE")
 	if _, err := os.Stat("/path/to/whatever"); errors.Is(err, os.ErrNotExist) || forceUpdate {

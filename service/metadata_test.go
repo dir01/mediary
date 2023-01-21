@@ -2,18 +2,18 @@ package service_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
 
-	"github.com/dir01/mediary/downloader"
 	"github.com/dir01/mediary/service"
 	"github.com/dir01/mediary/service/mocks"
 	"github.com/gojuno/minimock/v3"
 	"go.uber.org/zap"
 )
 
-var logger, _ = zap.NewDevelopment()
+var logger = zap.NewNop()
 
 func TestGetMetadata(t *testing.T) {
 	type testCase struct {
@@ -32,7 +32,7 @@ func TestGetMetadata(t *testing.T) {
 		ExpectedError    error
 	}
 
-	someContext := context.WithValue(context.Background(), "some-key", "some-value")
+	someContext := context.WithValue(context.Background(), "foo", "bar") //nolint:staticcheck // this is just a test
 	url := "magnet:?xt=urn:btih:deadbeef"
 
 	for _, tc := range []testCase{
@@ -65,7 +65,7 @@ func TestGetMetadata(t *testing.T) {
 			StorageGetResponse: nil,
 			DownloaderNotFound: true,
 			ExpectedResponse:   nil,
-			ExpectedError:      downloader.ErrUrlNotSupported,
+			ExpectedError:      errors.New("failed to get metadata: url not supported"),
 		},
 		{
 			Name:            "downloader errors",
@@ -81,8 +81,11 @@ func TestGetMetadata(t *testing.T) {
 			queue.
 				SubscribeMock.Set(func(ctx context.Context, jobType string, f1 func(payloadBytes []byte) error) {}).
 				PublishMock.Set(func(ctx context.Context, jobType string, payload any) (err error) { return nil }).
-				RunMock.Set(func() {})
+				RunMock.Set(func() {}).
+				ShutdownMock.Set(func() {})
 			svc := service.NewService(dwn, storage, queue, nil, nil, logger)
+			svc.Start()
+			defer svc.Stop()
 
 			storage.GetMetadataMock.
 				Expect(someContext, url).

@@ -22,6 +22,7 @@ func GetFakeRedisURL(ctx context.Context) (redisURL string, teardown func(), err
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          true,
+		Logger:           noplog,
 	})
 	teardown = func() { _ = container.Terminate(ctx) }
 	if err != nil {

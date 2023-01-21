@@ -31,11 +31,14 @@ func respond(w http.ResponseWriter, code int, payload interface{}) {
 		response, err = json.MarshalIndent(payload, "", "  ")
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
+			if _, err := w.Write([]byte(err.Error())); err != nil {
+				fmt.Printf("error writing response: %s", err)
+			}
 			return
 		}
 	}
 	w.WriteHeader(code)
-	w.Write(response)
-	return
+	if _, err := w.Write(response); err != nil {
+		fmt.Printf("error writing response: %s", err)
+	}
 }

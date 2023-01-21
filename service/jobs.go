@@ -14,7 +14,6 @@ import (
 var (
 	errUnsupportedJobType = fmt.Errorf("unsupported job type")
 	errJobAlreadyExists   = fmt.Errorf("job already exists")
-	errInvalidJobParams   = fmt.Errorf("invalid job params")
 )
 
 type JobParams struct {
@@ -76,7 +75,7 @@ func (svc *Service) CreateJob(ctx context.Context, params *JobParams) (*Job, err
 	}
 
 	svc.log.Debug("publishing job", zap.String("jobID", jobID))
-	if err := svc.jobsQueue.Publish(ctx, "", jobState.ID); err != nil {
+	if err := svc.jobsQueue.Publish(ctx, "process", jobState.ID); err != nil {
 		svc.log.Debug("failed to publish job", zap.String("jobID", jobID), zap.Error(err))
 		return nil, err
 	}

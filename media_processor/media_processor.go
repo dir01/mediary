@@ -2,7 +2,6 @@ package media_processor
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"regexp"
@@ -50,7 +49,7 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 		zap.Strings("filepaths", filepaths),
 	}
 
-	file, err := ioutil.TempFile("", "*"+ext)
+	file, err := os.CreateTemp("", "*"+ext)
 	if err != nil {
 		return "", zaperr.Wrap(err, "failed to create temp file", zapFields...)
 	}
@@ -63,11 +62,10 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 
 	conv.log.Debug("running ffmpeg", zapFields...)
 	output, err := cmd.CombinedOutput()
-	zapFields = append(zapFields, zap.String("output", string(output)))
 	if err != nil {
-		return "", zaperr.Wrap(err, "failed to run ffmpeg", zapFields...)
+		return "", zaperr.Wrap(err, "failed to run ffmpeg", []zap.Field{zap.String("output", string(output))}...)
 	}
-	conv.log.Debug("ffmpeg finished successfully", zap.String("output", string(output)))
+	conv.log.Debug("ffmpeg finished successfully", zapFields...)
 
 	return resultFilepath, nil
 }

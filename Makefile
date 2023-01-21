@@ -7,6 +7,9 @@ test:
 	@echo "+ $@"
 	go test -v -failfast -race ./... -coverprofile=coverage.out
 
+lint:
+	docker run -t --rm -v $$(pwd):/app -w /app golangci/golangci-lint:v1.50.1 golangci-lint run -v --timeout 5m
+
 .PHONY: test-e2e-gen-docs
 test-e2e-gen-docs:
 	@echo "+ $@"

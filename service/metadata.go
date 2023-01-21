@@ -33,7 +33,7 @@ func (svc *Service) GetMetadata(ctx context.Context, url string) (*Metadata, err
 	}
 
 	if !svc.downloader.AcceptsURL(url) {
-		return nil, zaperr.Wrap(ErrUrlNotSupported, "url not supported", zapFields...)
+		return nil, zaperr.Wrap(ErrUrlNotSupported, "failed to get metadata", zapFields...)
 	}
 
 	metadata, err := svc.downloader.GetMetadata(ctx, url)

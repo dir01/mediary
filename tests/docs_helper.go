@@ -3,14 +3,14 @@ package tests
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
 
-func newDocsHelper(t *testing.T, mux *http.ServeMux, readmeLocation, blockStartMarker, blockEndMarker string) *docsHelper {
+func NewDocsHelper(t *testing.T, mux *http.ServeMux, readmeLocation, blockStartMarker, blockEndMarker string) *docsHelper {
 	return &docsHelper{t: t, mux: mux, readmeLocation: readmeLocation, blockStartMarker: blockStartMarker, blockEndMarker: blockEndMarker}
 }
 
@@ -39,8 +39,10 @@ func (h *docsHelper) PerformRequestForDocs(
 
 	var reqString string
 	if body != nil {
-		body.Seek(0, io.SeekStart)
-		reqBodyBytes, err := ioutil.ReadAll(body)
+		if _, err := body.Seek(0, io.SeekStart); err != nil {
+			h.t.Fatalf("error seeking body: %v", err)
+		}
+		reqBodyBytes, err := io.ReadAll(body)
 		if err != nil {
 			h.t.Fatalf("error reading request body: %v", err)
 			return
@@ -75,7 +77,7 @@ func (h *docsHelper) PerformRequest(
 }
 
 func (h *docsHelper) Finish() {
-	readmeBytes, err := ioutil.ReadFile(h.readmeLocation)
+	readmeBytes, err := os.ReadFile(h.readmeLocation)
 	if err != nil {
 		h.t.Fatalf("error reading file: %v", err)
 	}
@@ -84,7 +86,7 @@ func (h *docsHelper) Finish() {
 	textToInsert = strings.ReplaceAll(textToInsert, "'''", "`")
 	readmeString := h.insertBetweenBlockMarkers(string(readmeBytes), textToInsert)
 
-	err = ioutil.WriteFile(h.readmeLocation, []byte(readmeString), 0644)
+	err = os.WriteFile(h.readmeLocation, []byte(readmeString), 0644)
 	if err != nil {
 		h.t.Fatalf("error writing file: %v", err)
 	}

@@ -23,9 +23,16 @@ func NewService(
 		uploader:       uploader,
 		log:            logger,
 	}
-	jobsQueue.Subscribe(context.Background(), "", svc.onPublishedJob)
-	jobsQueue.Run()
 	return svc
+}
+
+func (svc *Service) Start() {
+	svc.jobsQueue.Subscribe(context.Background(), "process", svc.onPublishedJob)
+	svc.jobsQueue.Run()
+}
+
+func (svc *Service) Stop() {
+	svc.jobsQueue.Shutdown()
 }
 
 type Service struct {

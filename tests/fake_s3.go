@@ -13,7 +13,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func getS3Client(ctx context.Context, bucketName string) (client *s3.Client, teardown func(), err error) {
+func GetS3Client(ctx context.Context, bucketName string) (client *s3.Client, teardown func(), err error) {
 	req := testcontainers.ContainerRequest{
 		Image:        "localstack/localstack:latest",
 		ExposedPorts: []string{"4566/tcp"},
@@ -30,7 +30,11 @@ func getS3Client(ctx context.Context, bucketName string) (client *s3.Client, tea
 	if err != nil {
 		return nil, func() {}, fmt.Errorf("error creating container: %w", err)
 	}
-	teardown = func() { container.Terminate(ctx) }
+	teardown = func() {
+		if err := container.Terminate(ctx); err != nil {
+			fmt.Printf("error terminating container: %v", err)
+		}
+	}
 
 	host, err := container.Host(ctx)
 	if err != nil {
@@ -46,10 +50,9 @@ func getS3Client(ctx context.Context, bucketName string) (client *s3.Client, tea
 
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithRegion("us-east-1"),
-		config.WithEndpointResolver(aws.EndpointResolverFunc(
-			func(service, region string) (aws.Endpoint, error) {
-				return aws.Endpoint{URL: endpoint}, nil
-			})),
+		config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...any) (aws.Endpoint, error) {
+			return aws.Endpoint{URL: endpoint}, nil
+		})),
 		config.WithCredentialsProvider(credentials.StaticCredentialsProvider{
 			Value: aws.Credentials{
 				AccessKeyID: "dummy", SecretAccessKey: "dummy", SessionToken: "dummy",
@@ -72,7 +75,7 @@ func getS3Client(ctx context.Context, bucketName string) (client *s3.Client, tea
 	return client, teardown, nil
 }
 
-//func getS3Client(ctx context.Context, bucketName string) (*s3.S3, error) {
+//func GetS3Client(ctx context.Context, bucketName string) (*s3.S3, error) {
 //	var targetPort nat.Port = "9090"
 //
 //	req := testcontainers.ContainerRequest{

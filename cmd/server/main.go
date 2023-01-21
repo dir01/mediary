@@ -61,6 +61,8 @@ func main() {
 	}
 
 	svc := service.NewService(dwn, store, queue, mediaProc, upl, logger)
+	svc.Start()
+	defer svc.Stop()
 
 	mux := mediary_http.PrepareHTTPServerMux(svc)
 
