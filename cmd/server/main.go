@@ -42,7 +42,7 @@ func main() {
 	redisClient := redis.NewClient(opt)
 	defer func() { _ = redisClient.Close() }()
 
-	queue, err := jobsqueue.NewRedisJobsQueue(redisClient, 10, "mediary", logger)
+	queue, err := jobsqueue.NewRedisJobsQueue(redisClient, 2, "mediary", logger)
 	if err != nil {
 		log.Fatalf("error initializing redis jobs queue: %v", err)
 	}
