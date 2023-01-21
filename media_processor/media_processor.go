@@ -2,9 +2,7 @@ package media_processor
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"regexp"
@@ -13,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dir01/mediary/service"
+	"github.com/hori-ryota/zaperr"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -45,67 +44,81 @@ func (conv *FFMpegMediaProcessor) GetInfo(ctx context.Context, filepath string) 
 
 func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []string, audioCodec string) (string, error) {
 	ext := filepaths[0][strings.LastIndex(filepaths[0], "."):] // FIXME
+	zapFields := []zap.Field{
+		zap.String("ext", ext),
+		zap.String("audioCodec", audioCodec),
+		zap.Strings("filepaths", filepaths),
+	}
 
 	file, err := ioutil.TempFile("", "*"+ext)
 	if err != nil {
-		return "", fmt.Errorf("failed to get temp file: %w", err)
+		return "", zaperr.Wrap(err, "failed to create temp file", zapFields...)
 	}
 	resultFilepath := file.Name()
+	zapFields = append(zapFields, zap.String("resultFilepath", resultFilepath))
 
 	args := []string{"-y", "-i", "concat:" + strings.Join(filepaths, "|"), "-acodec", audioCodec, resultFilepath}
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
-	conv.log.Debug("runing ffmpeg", zap.Any("cmd", cmd))
-	if output, err := cmd.CombinedOutput(); err != nil {
-		conv.log.Error(
-			"failed to run ffmpeg",
-			zap.String("cmd", cmd.String()),
-			zap.String("output", string(output)),
-			zap.String("err", err.Error()),
-		)
-		return "", err
-	} else {
-		conv.log.Debug("ffmpeg finished successfully", zap.String("output", string(output)))
+	zapFields = append(zapFields, zap.String("cmd", cmd.String()))
+
+	conv.log.Debug("running ffmpeg", zapFields...)
+	output, err := cmd.CombinedOutput()
+	zapFields = append(zapFields, zap.String("output", string(output)))
+	if err != nil {
+		return "", zaperr.Wrap(err, "failed to run ffmpeg", zapFields...)
 	}
+	conv.log.Debug("ffmpeg finished successfully", zap.String("output", string(output)))
 
 	return resultFilepath, nil
 }
 
 func (conv *FFMpegMediaProcessor) ExtractCoverArt(filepath string) (coverArtFilePath string, err error) {
-	//fullPath := path.Join(conv.workDir, filepath)
+	zapFields := []zap.Field{zap.String("filepath", filepath)}
 	coverArtFilePath = filepath + ".jpg"
+	zapFields = append(zapFields, zap.String("coverArtFilePath", coverArtFilePath))
+
 	cmd := exec.Command("ffmpeg", "-i", filepath, "-map", "0:v", "-map", "-0:V", "-c", "copy", "-y", coverArtFilePath)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		log.Printf("ffmpeg failed to extract cover art: %s", string(out))
-		return "", err
+	zapFields = append(zapFields, zap.String("cmd", cmd.String()))
+
+	out, err := cmd.CombinedOutput()
+	zapFields = append(zapFields, zap.String("output", string(out)))
+	if err != nil {
+		return "", zaperr.Wrap(err, "failed to run ffmpeg", zapFields...)
 	}
+
 	return coverArtFilePath, nil
 }
 
 func (conv *FFMpegMediaProcessor) GetDuration(filepath string) (time.Duration, error) {
 	cmd := exec.Command("ffmpeg", "-v", "quiet", "-stats", "-i", filepath, "-f", "null", "-")
+	zapFields := []zap.Field{zap.String("filepath", filepath), zap.String("cmd", cmd.String())}
+
 	out, err := cmd.CombinedOutput()
+	zapFields = append(zapFields, zap.String("output", string(out)))
 	if err != nil {
-		return 0, errors.Wrapf(err, "ffmpeg failed to get durationd: %s", string(out))
+		return 0, zaperr.Wrap(err, "failed to run ffmpeg", zapFields...)
 	}
+
 	re := regexp.MustCompile(`(\d\d:\d\d:\d\d)`)
 	found := re.FindAll(out, -1)
 	if len(found) == 0 {
-		return 0, fmt.Errorf("no timestamp found in %s", string(out))
+		return 0, zaperr.Wrap(err, "failed to parse duration", zapFields...)
 	}
 	lastFound := found[len(found)-1]
+	zapFields = append(zapFields, zap.String("lastFound", string(lastFound)))
 	tsParts := strings.Split(string(lastFound), ":")
 
 	hours, err := strconv.Atoi(tsParts[0])
 	if err != nil {
-		return 0, errors.Wrapf(err, "failed to parse hours of %s (full output: %s)", lastFound, string(out))
+		return 0, zaperr.Wrap(err, "failed to parse hours", zapFields...)
 	}
 	minutes, err := strconv.Atoi(tsParts[1])
 	if err != nil {
-		return 0, errors.Wrapf(err, "failed to parse minutes of %s (full output: %s)", lastFound, string(out))
+		return 0, zaperr.Wrap(err, "failed to parse minutes", zapFields...)
 	}
 	seconds, err := strconv.Atoi(tsParts[2])
 	if err != nil {
-		return 0, errors.Wrapf(err, "failed to parse seconds of %s (full output: %s)", lastFound, string(out))
+		return 0, zaperr.Wrap(err, "failed to parse seconds", zapFields...)
 	}
 
 	return time.Duration(seconds+60*minutes+60*60*hours) * time.Second, nil
