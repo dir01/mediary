@@ -55,20 +55,25 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, er
 			return fmt.Errorf("failed to download files: %w", err)
 		}
 
-		updateJobStatus(StatusProcessing)
-		// translate requested relative filepaths into actual fs filepaths while preserving order
-		fsFilepaths := make([]string, 0, len(filepathsMap))
-		for _, filepath := range params.Filepaths {
-			fsFilepaths = append(fsFilepaths, filepathsMap[filepath])
-		}
+		var resultFilepath string
+		if len(params.Filepaths) == 1 {
+			resultFilepath = filepathsMap[params.Filepaths[0]]
+		} else {
+			updateJobStatus(StatusProcessing)
+			// translate requested relative filepaths into actual fs filepaths while preserving order
+			fsFilepaths := make([]string, 0, len(filepathsMap))
+			for _, filepath := range params.Filepaths {
+				fsFilepaths = append(fsFilepaths, filepathsMap[filepath])
+			}
 
-		svc.log.Debug("starting conversion", zap.String("jobID", jobID))
-		ctx, cancel = context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
-		resultFilepath, err := svc.mediaProcessor.Concatenate(ctx, fsFilepaths, params.AudioCodec)
-		if err != nil {
-			svc.log.Error("failed to concatenate files", zap.String("jobID", jobID), zap.Error(err))
-			return fmt.Errorf("failed to concatenate files: %w", err)
+			svc.log.Debug("starting conversion", zap.String("jobID", jobID))
+			ctx, cancel = context.WithTimeout(context.Background(), 30*time.Minute)
+			defer cancel()
+			resultFilepath, err = svc.mediaProcessor.Concatenate(ctx, fsFilepaths, params.AudioCodec)
+			if err != nil {
+				svc.log.Error("failed to concatenate files", zap.String("jobID", jobID), zap.Error(err))
+				return fmt.Errorf("failed to concatenate files: %w", err)
+			}
 		}
 
 		info, err := svc.mediaProcessor.GetInfo(ctx, resultFilepath)
@@ -78,7 +83,7 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, er
 		}
 		job.ResultMediaDuration = info.Duration
 		job.ResultFileBytes = info.FileLenBytes
-		_ = svc.storage.SaveJob(ctx, job)
+		//no need to save, as long as next line is status update // _ = svc.storage.SaveJob(ctx, job)
 
 		updateJobStatus(StatusUploading)
 		svc.log.Debug("starting upload", zap.String("jobID", jobID))
