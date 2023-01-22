@@ -1,5 +1,5 @@
 FROM golang:alpine
-RUN apk add gcc musl-dev g++
+RUN apk add gcc musl-dev g++ ffmpeg
 ENV GOPATH ""
 ADD go.mod go.sum ./
 RUN go mod download
