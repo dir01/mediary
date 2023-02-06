@@ -12,7 +12,7 @@ require (
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gojuno/minimock/v3 v3.0.10
 	github.com/hori-ryota/zaperr v0.0.0-20210301022522-bfd0551d7f64
-	github.com/joho/godotenv v1.4.0
+	github.com/joho/godotenv v1.5.1
 	github.com/pkg/errors v0.9.1
 	github.com/taylorchu/work v0.2.10
 	github.com/testcontainers/testcontainers-go v0.17.0
