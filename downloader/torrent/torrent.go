@@ -11,14 +11,16 @@ import (
 	"time"
 
 	anacrolixTorrent "github.com/anacrolix/torrent"
+
 	"github.com/dir01/mediary/service"
 	"go.uber.org/zap"
 )
 
-func NewTorrentDownloader(dataDir string, logger *zap.Logger) (*TorrentDownloader, error) {
+func NewTorrentDownloader(dataDir string, logger *zap.Logger, isDebug bool) (*TorrentDownloader, error) {
 	cfg := anacrolixTorrent.NewDefaultClientConfig()
 	cfg.ListenPort = 0
 	cfg.DataDir = dataDir
+	cfg.Debug = isDebug
 	torrentClient, err := anacrolixTorrent.NewClient(cfg)
 	if err != nil {
 		return nil, err

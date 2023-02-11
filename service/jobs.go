@@ -44,11 +44,13 @@ const StatusComplete = "complete"
 // CreateJob creates an entry for job in storage and enqueues it for processing in background
 func (svc *Service) CreateJob(ctx context.Context, params *JobParams) (*Job, error) {
 	jobID := svc.calculateJobId(params)
-	svc.log.Debug(
-		"started CreateJob",
+
+	zapFields := []zap.Field{
 		zap.String("jobID", jobID),
 		zap.Any("params", params),
-	)
+	}
+	svc.log.Debug("started CreateJob", zapFields...)
+
 	jobState := &Job{
 		JobParams:     *params,
 		ID:            jobID,
@@ -62,7 +64,7 @@ func (svc *Service) CreateJob(ctx context.Context, params *JobParams) (*Job, err
 
 	// disallow duplicate jobs
 	if existingstate, err := svc.storage.GetJob(ctx, jobID); err != nil {
-		svc.log.Error("failed to get job state", zap.String("jobID", jobID), zap.Error(err))
+		svc.log.Error("failed to get job state", zap.Error(err))
 		return nil, fmt.Errorf("failed to get existing job state: %w", err)
 	} else if existingstate != nil {
 		svc.log.Debug("job already exists", zap.String("jobID", jobID))

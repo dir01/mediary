@@ -23,6 +23,7 @@ type FileMetadata struct {
 
 func (svc *Service) GetMetadata(ctx context.Context, url string) (*Metadata, error) {
 	zapFields := []zap.Field{zap.String("url", url)}
+	svc.log.Debug("getting metadata", zapFields...)
 	if metadata, err := svc.storage.GetMetadata(ctx, url); err != nil {
 		svc.log.Error(
 			"error getting metadata from storage, will continue",

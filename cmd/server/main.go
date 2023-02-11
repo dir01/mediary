@@ -23,9 +23,20 @@ import (
 func main() {
 	_ = godotenv.Load()
 
-	logger, err := zap.NewDevelopment()
-	if err != nil {
-		log.Fatalf("error initializing logger: %v", err)
+	var isDebug bool
+	if val, exists := os.LookupEnv("DEBUG"); exists && val != "" && val != "0" && val != "false" {
+		isDebug = true
+	}
+
+	var logger *zap.Logger
+	var loggerErr error
+	if isDebug {
+		logger, loggerErr = zap.NewDevelopment()
+	} else {
+		logger, loggerErr = zap.NewProduction()
+	}
+	if loggerErr != nil {
+		log.Fatalf("error creating logger: %v", loggerErr)
 	}
 	defer func() { _ = logger.Sync() }()
 
@@ -38,7 +49,7 @@ func main() {
 	}
 
 	// torrentDownloader downloads torrents
-	torrentDownloader, err := torrent.NewTorrentDownloader(os.TempDir(), logger)
+	torrentDownloader, err := torrent.NewTorrentDownloader(os.TempDir(), logger, isDebug)
 	if err != nil {
 		log.Fatalf("error creating torrent downloader: %v", err)
 	}
@@ -98,6 +109,10 @@ func main() {
 	mux := mediary_http.PrepareHTTPServerMux(svc)
 
 	addr := "0.0.0.0:8080"
+	if _, ok := os.LookupEnv("BIND_ADDR"); ok {
+		addr = os.Getenv("BIND_ADDR")
+	}
+
 	log.Printf("Starting to listen on %s", addr)
 	log.Println(http.ListenAndServe(addr, mux))
 }
