@@ -91,7 +91,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.0-rc2 // indirect
 	github.com/opencontainers/runc v1.1.4 // indirect
 	github.com/pion/datachannel v1.5.2 // indirect
-	github.com/pion/dtls/v2 v2.1.5 // indirect
+	github.com/pion/dtls/v2 v2.2.4 // indirect
 	github.com/pion/ice/v2 v2.2.7 // indirect
 	github.com/pion/interceptor v0.1.12 // indirect
 	github.com/pion/logging v0.2.2 // indirect
@@ -104,8 +104,9 @@ require (
 	github.com/pion/srtp/v2 v2.0.10 // indirect
 	github.com/pion/stun v0.3.5 // indirect
 	github.com/pion/transport v0.13.1 // indirect
+	github.com/pion/transport/v2 v2.0.0 // indirect
 	github.com/pion/turn/v2 v2.0.8 // indirect
-	github.com/pion/udp v0.1.1 // indirect
+	github.com/pion/udp v0.1.4 // indirect
 	github.com/pion/webrtc/v3 v3.1.44 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rs/dnscache v0.0.0-20211102005908-e0241e321417 // indirect
@@ -119,11 +120,11 @@ require (
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/goleak v1.1.12 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
-	golang.org/x/crypto v0.0.0-20220829220503-c86fa9a7ed90 // indirect
+	golang.org/x/crypto v0.5.0 // indirect
 	golang.org/x/exp v0.0.0-20220915105810-2d61f44442a3 // indirect
-	golang.org/x/net v0.0.0-20220909164309-bea034e7d591 // indirect
+	golang.org/x/net v0.5.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/sys v0.3.0 // indirect
+	golang.org/x/sys v0.4.0 // indirect
 	golang.org/x/time v0.0.0-20220722155302-e5dcc9cfc0b9 // indirect
 	google.golang.org/genproto v0.0.0-20220915135415-7fd63a7952de // indirect
 	google.golang.org/grpc v1.49.0 // indirect
