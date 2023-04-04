@@ -1,0 +1,19 @@
+{
+  "url": "https://www.youtube.com/watch?v=kPN-uWB28X8",
+  "name": "Miles Davis - Baby won't you please come home",
+  "variants": [
+    {
+      "id": "Video (mp4)"
+    },
+    {
+      "id": "Audio (mp3), High Quality"
+    },
+    {
+      "id": "Audio (mp3), Medium Quality"
+    },
+    {
+      "id": "Audio (mp3), Low Quality"
+    }
+  ],
+  "allow_multiple_variants": false
+}

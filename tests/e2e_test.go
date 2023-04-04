@@ -16,7 +16,9 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/dir01/mediary/downloader"
 	"github.com/dir01/mediary/downloader/torrent"
+	"github.com/dir01/mediary/downloader/ytdl"
 	http2 "github.com/dir01/mediary/http"
 	"github.com/dir01/mediary/media_processor"
 	"github.com/dir01/mediary/service"
@@ -41,10 +43,17 @@ func TestApplication(t *testing.T) {
 		t.Fatalf("error creating s3 client: %v", err)
 	}
 
-	downloader, err := torrent.NewTorrentDownloader(os.TempDir(), logger)
+	torrDwn, err := torrent.New(os.TempDir(), logger, false)
 	if err != nil {
 		t.Fatalf("error creating torrent downloader: %v", err)
 	}
+
+	ytdlDwn, err := ytdl.New(GetYtdlDir(t), os.TempDir(), logger)
+	if err != nil {
+		t.Fatalf("error creating ytdl downloader: %v", err)
+	}
+
+	dwn := downloader.NewCompositeDownloader([]service.Downloader{torrDwn, ytdlDwn})
 
 	redisURL, teardownRedis, err := GetFakeRedisURL(context.Background())
 	defer teardownRedis()
@@ -74,7 +83,7 @@ func TestApplication(t *testing.T) {
 		t.Fatalf("error creating uploader: %v", err)
 	}
 
-	svc := service.NewService(downloader, store, queue, mediaProcessor, upl, logger)
+	svc := service.NewService(dwn, store, queue, mediaProcessor, upl, logger)
 	svc.Start()
 	defer svc.Stop()
 
@@ -87,11 +96,11 @@ func TestApplication(t *testing.T) {
 	)
 	defer docs.Finish()
 
-	t.Run("metadata with timeout", func(t *testing.T) {
+	t.Run("torrent metadata with timeout", func(t *testing.T) {
 		expectedResponse := `{"status": "accepted"}`
 		docs.InsertText(`### '''/metadata''' - Timeouts
 
-By default, the endpoint will timeout pretty quickly, 
+By default, the endpoint will time out pretty quickly, 
 probably sooner than it takes to fetch metadata of a torrent, for example.
 
 In such cases, the endpoint will return a '''202 Accepted''' status code and a message '''%s'''
@@ -112,7 +121,7 @@ Feel free to repeat your request later: metadata is still being fetched in backg
 		)
 	})
 
-	t.Run("metadata with long-polling", func(t *testing.T) {
+	t.Run("torrent metadata with long-polling", func(t *testing.T) {
 		docs.InsertText(`### '''/metadata/long-polling'''
 
 In case you'd rather wait for the metadata to be fetched, you can use the long-polling endpoint.
@@ -149,6 +158,45 @@ So all consecutive requests for the same URL will return the same metadata, and 
 		)
 	})
 
+	t.Run("ytdl metadata - long polling", func(t *testing.T) {
+		youtubeURL := "https://www.youtube.com/watch?v=kPN-uWB28X8"
+
+		docs.InsertText(`### '''/metadata''' - YouTube
+
+The endpoint also supports fetching metadata for YouTube videos.
+Note that instead of file paths we get different options of desired formats:
+Video, Audio, different qualities, etc.
+
+This will allow you to choose the format you want to download later in the same UI as for torrent files.
+
+Since it does not make sense to concatenate different versions of the same video,
+response also will have ''''"allow_multiple_files": false'''. 
+Take this into account while presenting format options to user`)
+
+		docs.PerformRequestForDocs("GET",
+			`/metadata?url=`+youtubeURL,
+			nil,
+			http.StatusAccepted,
+			nil,
+		)
+
+		start := time.Now()
+		for {
+			if time.Since(start) > 10*time.Second {
+				t.Fatalf("timeout waiting for metadata")
+			}
+			resp := docs.PerformRequest("GET", `/metadata?url=`+youtubeURL, nil, 0, nil)
+			if resp.Code == http.StatusOK {
+				break
+			}
+		}
+
+		docs.InsertText(`and then later`)
+		docs.PerformRequestForDocs("GET", `/metadata?url=`+youtubeURL, nil, http.StatusOK, func(rr *httptest.ResponseRecorder) {
+			AssertMatchesGoldenFile(t, rr.Body.Bytes(), "metadata_ytdl.json")
+		})
+	})
+
 	t.Run("job creation and status", func(t *testing.T) {
 		docs.InsertText(`### '''/jobs''' 
 
@@ -168,18 +216,17 @@ requires a list of files to be concatenated and, optionally, an '''audioCodec'''
 		urlStr := presignResult.URL
 
 		payload := strings.NewReader(fmt.Sprintf(`{
-			"url": "%s",
-			"type": "concatenate",
-			"params": {
-				"filepaths": [
-					"01-001.mp3",
-					"01-002.mp3"
-				],
-				"audioCodec": "mp3",
-				"uploadUrl": "%s"
-			}
-		}`, "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73&tr=http%3A%2F%2Fbt3.t-ru.org", urlStr,
-		))
+	"url": "%s",
+	"type": "concatenate",
+	"params": {
+		"variants": [
+			"01-001.mp3",
+			"01-002.mp3"
+		],
+		"audioCodec": "mp3",
+		"uploadUrl": "%s"
+	}
+}`, "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73&tr=http%3A%2F%2Fbt3.t-ru.org", urlStr))
 
 		var jobID string
 		docs.PerformRequestForDocs(
@@ -242,4 +289,77 @@ To check the status of the job, you can use the '''/jobs/:id''' endpoint.`)
 			}
 		}
 	})
+
+	t.Run("downloading youtube video", func(t *testing.T) {
+		docs.InsertText(`### Downloading YouTube audio
+
+To download a YouTube video, you need to pass the URL of the video to the '''/jobs''' endpoint.`)
+
+		presignClient := s3.NewPresignClient(s3Client)
+		presignResult, err := presignClient.PresignPutObject(context.TODO(), &s3.PutObjectInput{
+			Bucket: aws.String(testBucketName),
+			Key:    aws.String("some-path/some-file.some-ext"),
+		})
+		if err != nil {
+			t.Fatal(fmt.Errorf("failed to presign: %w", err))
+		}
+		urlStr := presignResult.URL
+
+		payload := strings.NewReader(fmt.Sprintf(`{
+	"url": "%s",
+	"type": "upload_original",
+	"params": {
+		"variant": "Audio (mp3), Low Quality",
+		"uploadUrl": "%s"
+	}
+}`, "https://www.youtube.com/watch?v=kPN-uWB28X8", urlStr))
+
+		var jobID string
+		docs.PerformRequestForDocs(
+			"POST",
+			"/jobs",
+			payload,
+			http.StatusAccepted,
+			func(rr *httptest.ResponseRecorder) {
+				var job struct {
+					ID string `json:"id"`
+				}
+				err := json.Unmarshal(rr.Body.Bytes(), &job)
+				if err != nil {
+					t.Errorf("failed to unmarshal job ID: %s", err)
+				}
+				jobID = job.ID
+			},
+		)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Minute)
+		defer cancel()
+
+	loop:
+		for {
+			select {
+			case <-ctx.Done():
+				t.Errorf("job %s did not finish in time", jobID)
+				break loop
+			case <-time.After(100 * time.Millisecond):
+				shouldBreak := false
+				docs.PerformRequest("GET", "/jobs/"+jobID, nil, http.StatusOK, func(rr *httptest.ResponseRecorder) {
+					var job struct {
+						Status string `json:"status"`
+					}
+					err := json.Unmarshal(rr.Body.Bytes(), &job)
+					if err != nil {
+						t.Errorf("failed to unmarshal job ID: %s", err)
+					}
+					if job.Status == service.JobStatusComplete {
+						shouldBreak = true
+					}
+				})
+				if shouldBreak {
+					break loop
+				}
+			}
+		}
+	})
+
 }

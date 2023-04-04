@@ -2,106 +2,101 @@ package service
 
 import (
 	"context"
-	"fmt"
+	"github.com/hori-ryota/zaperr"
 	"time"
 
 	"go.uber.org/zap"
 )
 
 func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, error) {
+	zapFields := []zap.Field{zap.String("jobID", jobID), zap.Any("job", job)}
 	type Params struct {
-		Filepaths  []string `json:"filepaths"`
+		Variants   []string `json:"variants"`
 		AudioCodec string   `json:"audioCodec"`
 		UploadURL  string   `json:"uploadUrl"`
 	}
 	params := Params{}
 	err := mapToStruct(job.Params, &params)
 	if err != nil {
-		svc.log.Error("failed to parse job params", zap.String("jobID", jobID), zap.Error(err))
-		return nil, fmt.Errorf("failed to parse job params to %T: %w", params, err)
+		return nil, zaperr.Wrap(err, "failed to parse job params to %T: %w", zapFields...)
 	}
 	if params.AudioCodec == "" {
 		params.AudioCodec = "copy"
 	}
-	svc.log.Debug("parsed job params", zap.String("jobID", jobID), zap.Any("params", params))
+	zapFields = append(zapFields, zap.Any("params", params))
+	svc.log.Debug("parsed job params", zapFields...)
 
 	return func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		defer cancel()
 		job, err := svc.storage.GetJob(ctx, jobID)
 		if err != nil {
-			svc.log.Error("failed to get job state", zap.String("jobID", jobID), zap.Error(err))
-			return fmt.Errorf("failed to get job: %w", err)
+			return zaperr.Wrap(err, "failed to get job: %w", zapFields...)
 		}
+		zapFields = append(zapFields, zap.Any("job", job))
 
 		updateJobStatus := func(status string) {
 			job.DisplayStatus = status
 			if err = svc.storage.SaveJob(ctx, job); err != nil {
-				svc.log.Error(
-					"failed to save job state, proceeding",
-					zap.String("jobID", jobID), zap.String("state", job.DisplayStatus), zap.Error(err),
-				)
+				zapFields := append([]zap.Field{
+					zaperr.ToField(err),
+					zap.String("state", job.DisplayStatus),
+				}, zapFields...)
+				svc.log.Error("failed to save job state, proceeding", zapFields...)
 			}
 		}
 
-		updateJobStatus(StatusDownloading)
-		svc.log.Debug("starting download", zap.String("jobID", jobID))
+		updateJobStatus(JobStatusDownloading)
+		svc.log.Debug("starting download", zapFields...)
 		ctx, cancel = context.WithTimeout(context.Background(), 1*time.Hour)
 		defer cancel()
 
-		filepathsMap, err := svc.downloader.Download(ctx, job.URL, params.Filepaths)
+		filepathsMap, err := svc.downloader.Download(ctx, job.URL, params.Variants)
 		if err != nil {
-			svc.log.Error("failed to download files", zap.String("jobID", jobID), zap.Error(err))
-			return fmt.Errorf("failed to download files: %w", err)
+			return zaperr.Wrap(err, "failed to download variants", zapFields...)
 		}
 
 		var resultFilepath string
-		if len(params.Filepaths) == 1 {
-			resultFilepath = filepathsMap[params.Filepaths[0]]
+		if len(params.Variants) == 1 {
+			resultFilepath = filepathsMap[params.Variants[0]]
 		} else {
-			updateJobStatus(StatusProcessing)
-			// translate requested relative filepaths into actual fs filepaths while preserving order
+			updateJobStatus(JobStatusProcessing)
+			// translate requested variants into actual fs filepaths while preserving order
 			fsFilepaths := make([]string, 0, len(filepathsMap))
-			for _, filepath := range params.Filepaths {
+			for _, filepath := range params.Variants {
 				fsFilepaths = append(fsFilepaths, filepathsMap[filepath])
 			}
 
-			svc.log.Debug("starting conversion", zap.String("jobID", jobID))
+			svc.log.Debug("starting conversion", zapFields...)
 			ctx, cancel = context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
 			resultFilepath, err = svc.mediaProcessor.Concatenate(ctx, fsFilepaths, params.AudioCodec)
 			if err != nil {
-				svc.log.Error("failed to concatenate files", zap.String("jobID", jobID), zap.Error(err))
-				return fmt.Errorf("failed to concatenate files: %w", err)
+				return zaperr.Wrap(err, "failed to concatenate files", zapFields...)
 			}
 		}
+		zapFields = append(zapFields, zap.String("localFilename", resultFilepath))
 
 		info, err := svc.mediaProcessor.GetInfo(ctx, resultFilepath)
 		if err != nil {
-			svc.log.Error("failed to get info about result file", zap.String("jobID", jobID), zap.Error(err))
-			return fmt.Errorf("failed to get info about result file: %w", err)
+			return zaperr.Wrap(err, "failed to get info about result file", zapFields...)
 		}
+		zapFields = append(zapFields, zap.Any("info", info))
 		job.ResultMediaDuration = info.Duration
 		job.ResultFileBytes = info.FileLenBytes
 		//no need to save, as long as next line is status update // _ = svc.storage.SaveJob(ctx, job)
 
-		updateJobStatus(StatusUploading)
-		svc.log.Debug("starting upload", zap.String("jobID", jobID))
+		updateJobStatus(JobStatusUploading)
+		svc.log.Debug("starting upload", zapFields...)
 		ctx, cancel = context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 		err = svc.uploader.Upload(ctx, resultFilepath, params.UploadURL)
 		if err != nil {
-			svc.log.Error(
-				"failed to upload result",
-				zap.String("jobID", jobID),
-				zap.String("localFilename", resultFilepath),
-				zap.Error(err),
-			)
-			return fmt.Errorf("failed to upload result: %w", err)
+			return zaperr.Wrap(err, "failed to upload result", zapFields...)
 		}
 
-		updateJobStatus(StatusComplete)
-		svc.log.Debug("job complete", zap.String("jobID", jobID))
+		updateJobStatus(JobStatusComplete)
+		svc.log.Debug("job complete", zapFields...)
 		return nil
 	}, nil
 }

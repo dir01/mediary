@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"github.com/dir01/mediary/downloader/ytdl"
+	"github.com/hori-ryota/zaperr"
 	"log"
 	"net/http"
 	"os"
@@ -23,10 +25,26 @@ import (
 func main() {
 	_ = godotenv.Load()
 
+	// region env vars
+	redisURL := mustGetEnv("REDIS_URL")
+
+	bgRedisURL := os.Getenv("REDIS_URL_BG_JOBS")
+	if bgRedisURL == "" {
+		bgRedisURL = redisURL
+	}
+
+	bindAddr := "0.0.0.0:8080"
+	if _, ok := os.LookupEnv("BIND_ADDR"); ok {
+		bindAddr = os.Getenv("BIND_ADDR")
+	}
+
+	youtubedlDir := mustGetEnv("YOUTUBEDL_DIR")
+
 	var isDebug bool
 	if val, exists := os.LookupEnv("DEBUG"); exists && val != "" && val != "0" && val != "false" {
 		isDebug = true
 	}
+	// endregion
 
 	var logger *zap.Logger
 	var loggerErr error
@@ -40,22 +58,20 @@ func main() {
 	}
 	defer func() { _ = logger.Sync() }()
 
-	mustGetEnv := func(key string) string {
-		value, ok := os.LookupEnv(key)
-		if !ok {
-			logger.Fatal("missing env var", zap.String("key", key))
-		}
-		return value
+	// torrentDownloader downloads torrents
+	torrentDownloader, err := torrent.New(os.TempDir(), logger, isDebug)
+	if err != nil {
+		logger.Fatal("error creating torrent downloader", zap.Error(err))
 	}
 
-	// torrentDownloader downloads torrents
-	torrentDownloader, err := torrent.NewTorrentDownloader(os.TempDir(), logger, isDebug)
+	// ytdlDownloader downloads YouTube videos (potentially - everything that youtubedl supports)
+	ytdlDownloader, err := ytdl.New(youtubedlDir, os.TempDir(), logger)
 	if err != nil {
-		log.Fatalf("error creating torrent downloader: %v", err)
+		logger.Fatal("error creating ytdl downloader", zap.Error(err))
 	}
 
 	// dwn is a composite downloader: it can download anything, as long as one of its minions knows how to
-	dwn := downloader.NewDownloader([]service.Downloader{torrentDownloader})
+	dwn := downloader.NewCompositeDownloader([]service.Downloader{torrentDownloader, ytdlDownloader})
 
 	mkRedisClient := func(url string) (client *redis.Client, teardown func()) {
 		opt, err := redis.ParseURL(url)
@@ -66,21 +82,16 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if _, err := redisClient.Ping(ctx).Result(); err != nil {
-			logger.Fatal("error connecting to redis", zap.Error(err))
+			logger.Fatal("error connecting to redis", zaperr.ToField(err))
 		}
 		return redisClient, func() { _ = redisClient.Close() }
 	}
 
 	// redisClient will be used both for storage
-	redisURL := mustGetEnv("REDIS_URL")
 	redisClient, teardownRedis := mkRedisClient(redisURL)
 	defer teardownRedis()
 
 	// and for jobs queue
-	bgRedisURL := os.Getenv("REDIS_URL_BG_JOBS")
-	if bgRedisURL == "" {
-		bgRedisURL = redisURL
-	}
 	bgRedisClient, teardownBgRedis := mkRedisClient(bgRedisURL)
 	defer teardownBgRedis()
 
@@ -108,11 +119,14 @@ func main() {
 
 	mux := mediary_http.PrepareHTTPServerMux(svc)
 
-	addr := "0.0.0.0:8080"
-	if _, ok := os.LookupEnv("BIND_ADDR"); ok {
-		addr = os.Getenv("BIND_ADDR")
-	}
+	log.Printf("Starting to listen on %s", bindAddr)
+	log.Println(http.ListenAndServe(bindAddr, mux))
+}
 
-	log.Printf("Starting to listen on %s", addr)
-	log.Println(http.ListenAndServe(addr, mux))
+func mustGetEnv(key string) string {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		log.Fatalf("missing env var: %s", key)
+	}
+	return value
 }

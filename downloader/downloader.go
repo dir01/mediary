@@ -9,7 +9,7 @@ import (
 
 var ErrUrlNotSupported = fmt.Errorf("url not supported")
 
-func NewDownloader(downloaders []service.Downloader) *Downloader {
+func NewCompositeDownloader(downloaders []service.Downloader) *Downloader {
 	downloader := &Downloader{downloaders}
 	var _ service.Downloader = downloader
 	return downloader

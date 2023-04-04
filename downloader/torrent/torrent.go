@@ -3,6 +3,7 @@ package torrent
 import (
 	"context"
 	"fmt"
+	"github.com/hori-ryota/zaperr"
 	"os"
 	"path"
 	"sort"
@@ -11,12 +12,11 @@ import (
 	"time"
 
 	anacrolixTorrent "github.com/anacrolix/torrent"
-
 	"github.com/dir01/mediary/service"
 	"go.uber.org/zap"
 )
 
-func NewTorrentDownloader(dataDir string, logger *zap.Logger, isDebug bool) (*TorrentDownloader, error) {
+func New(dataDir string, logger *zap.Logger, isDebug bool) (*Downloader, error) {
 	cfg := anacrolixTorrent.NewDefaultClientConfig()
 	cfg.ListenPort = 0
 	cfg.DataDir = dataDir
@@ -25,22 +25,22 @@ func NewTorrentDownloader(dataDir string, logger *zap.Logger, isDebug bool) (*To
 	if err != nil {
 		return nil, err
 	}
-	d := &TorrentDownloader{torrentClient: torrentClient, dataDir: dataDir, log: logger}
+	d := &Downloader{torrentClient: torrentClient, dataDir: dataDir, log: logger}
 	var _ service.Downloader = d
 	return d, nil
 }
 
-type TorrentDownloader struct {
+type Downloader struct {
 	torrentClient *anacrolixTorrent.Client
 	dataDir       string
 	log           *zap.Logger
 }
 
-func (td *TorrentDownloader) AcceptsURL(url string) bool {
+func (td *Downloader) AcceptsURL(url string) bool {
 	return strings.HasPrefix(url, "magnet:")
 }
 
-func (td *TorrentDownloader) GetMetadata(ctx context.Context, url string) (*service.Metadata, error) {
+func (td *Downloader) GetMetadata(ctx context.Context, url string) (*service.Metadata, error) {
 	torr, err := td.torrentClient.AddMagnet(url)
 	if err != nil {
 		return nil, err
@@ -53,25 +53,26 @@ func (td *TorrentDownloader) GetMetadata(ctx context.Context, url string) (*serv
 	}
 
 	info := torr.Info()
-	files := make([]service.FileMetadata, len(info.Files))
+	variants := make([]service.VariantMetadata, len(info.Files))
 	for i, f := range info.Files {
-		files[i] = service.FileMetadata{
-			Path:     f.DisplayPath(info),
-			LenBytes: f.Length,
+		variants[i] = service.VariantMetadata{
+			ID:       f.DisplayPath(info),
+			LenBytes: &f.Length,
 		}
 	}
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].Path < files[j].Path
+	sort.Slice(variants, func(i, j int) bool {
+		return variants[i].ID < variants[j].ID
 	})
 	metadata := &service.Metadata{
-		URL:   url,
-		Name:  info.Name,
-		Files: files,
+		URL:                   url,
+		Name:                  info.Name,
+		Variants:              variants,
+		AllowMultipleVariants: true,
 	}
 	return metadata, nil
 }
 
-func (td *TorrentDownloader) Download(ctx context.Context, url string, filepaths []string) (filepathsMap map[string]string, err error) {
+func (td *Downloader) Download(ctx context.Context, url string, filepaths []string) (filepathsMap map[string]string, err error) {
 	// if datadir is not a directory, we can't download anything
 	if stat, err := os.Stat(td.dataDir); err != nil || stat == nil || !stat.IsDir() {
 		td.log.Error("datadir is not a directory", zap.String("datadir", td.dataDir), zap.String("url", url))
@@ -80,7 +81,7 @@ func (td *TorrentDownloader) Download(ctx context.Context, url string, filepaths
 
 	torr, err := td.torrentClient.AddMagnet(url)
 	if err != nil {
-		td.log.Debug("failed to add magnet", zap.String("url", url), zap.Error(err))
+		td.log.Debug("failed to add magnet", zap.String("url", url), zaperr.ToField(err))
 		return nil, err
 	}
 

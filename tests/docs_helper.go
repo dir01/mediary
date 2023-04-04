@@ -64,8 +64,8 @@ func (h *docsHelper) PerformRequest(
 	rr := httptest.NewRecorder()
 	h.mux.ServeHTTP(rr, req)
 
-	if status := rr.Code; status != expectedStatusCode {
-		h.t.Errorf("handler returned wrong status code: got %v want %v\n%s", status, expectedStatusCode, rr.Body.String())
+	if status := rr.Code; status != expectedStatusCode && expectedStatusCode != 0 {
+		h.t.Fatalf("handler returned wrong status code: got %v want %v\n%s", status, expectedStatusCode, rr.Body.String())
 		return nil
 	}
 

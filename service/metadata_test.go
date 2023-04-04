@@ -32,7 +32,6 @@ func TestGetMetadata(t *testing.T) {
 		ExpectedError    error
 	}
 
-	someContext := context.WithValue(context.Background(), "foo", "bar") //nolint:staticcheck // this is just a test
 	url := "magnet:?xt=urn:btih:deadbeef"
 
 	for _, tc := range []testCase{
@@ -87,9 +86,12 @@ func TestGetMetadata(t *testing.T) {
 			svc.Start()
 			defer svc.Stop()
 
-			storage.GetMetadataMock.
-				Expect(someContext, url).
-				Return(tc.StorageGetResponse, tc.StorageGetError)
+			storage.GetMetadataMock.Set(func(ctx context.Context, u string) (r *service.Metadata, err error) {
+				if u != url {
+					t.Fatalf("expected url %s, got %s", url, u)
+				}
+				return tc.StorageGetResponse, tc.StorageGetError
+			})
 
 			if tc.DownloaderNotFound {
 				dwn.AcceptsURLMock.Return(false)
@@ -97,13 +99,16 @@ func TestGetMetadata(t *testing.T) {
 				dwn.AcceptsURLMock.Return(true)
 			}
 
-			dwn.GetMetadataMock.
-				Expect(someContext, url).
-				Return(tc.DownloaderResponse, tc.DownloaderError)
+			dwn.GetMetadataMock.Set(func(ctx context.Context, u string) (r *service.Metadata, err error) {
+				if u != url {
+					t.Fatalf("expected url %s, got %s", url, u)
+				}
+				return tc.DownloaderResponse, tc.DownloaderError
+			})
 
 			storage.SaveMetadataMock.Return(tc.StorageSaveResponse)
 
-			result, err := svc.GetMetadata(someContext, url)
+			result, err := svc.GetMetadata(context.TODO(), url)
 
 			if tc.ExpectedError != nil {
 				if err == nil || err.Error() != tc.ExpectedError.Error() {
