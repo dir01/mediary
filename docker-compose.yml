@@ -1,6 +1,19 @@
 version: '2'
 services:
+  mediary:
+    build:
+      context: .
+    environment:
+      - "DEBUG=1"
+      - "BIND_ADDR=0.0.0.0:9999"
+      - "REDIS_URL=redis://redis:6379"
+    ports:
+      - "127.0.0.1:9999:9999"
+    depends_on:
+      - redis
+
   redis:
     image: redis:alpine
     ports:
       - "6379:6379"
+

@@ -9,8 +9,8 @@ import (
 
 func AssertMatchesGoldenFile(t *testing.T, data []byte, filename string) {
 	filepath := path.Join("testdata", filename)
-	_, forceUpdate := os.LookupEnv("UPDATE")
-	if _, err := os.Stat("/path/to/whatever"); errors.Is(err, os.ErrNotExist) || forceUpdate {
+	_, forceUpdate := os.LookupEnv("UPDATE_GOLDEN")
+	if _, err := os.Stat(filepath); errors.Is(err, os.ErrNotExist) || forceUpdate {
 		err := os.WriteFile(filepath, data, 0644)
 		if err != nil {
 			t.Fatal(err)

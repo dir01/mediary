@@ -4,3 +4,6 @@ bin/
 .gitignore
 coverage.out
 .torrent.db*
+Dockerfile
+docker-compose.yml
+.dockerignore

@@ -1,18 +1,19 @@
 {
   "url": "magnet:?xt=urn:btih:FB0B49D5E3E18E29868C680D2F7BC00D67987D56",
   "name": "Джо Диспенза - Медитации к Силе подсознания [Александр Шаронов]",
-  "files": [
+  "variants": [
     {
-      "path": "вступление.mp3",
+      "id": "вступление.mp3",
       "length_bytes": 1181881
     },
     {
-      "path": "глава 1.mp3",
-      "length_bytes": 40623850
+      "id": "глава 1.mp3",
+      "length_bytes": 1181881
     },
     {
-      "path": "глава 2.mp3",
-      "length_bytes": 42107250
+      "id": "глава 2.mp3",
+      "length_bytes": 1181881
     }
-  ]
+  ],
+  "allow_multiple_variants": true
 }
