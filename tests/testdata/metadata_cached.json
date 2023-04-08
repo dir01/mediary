@@ -15,5 +15,6 @@
       "length_bytes": 1181881
     }
   ],
-  "allow_multiple_variants": true
+  "allow_multiple_variants": true,
+  "downloader_name": "torrent"
 }

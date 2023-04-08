@@ -11,6 +11,7 @@ require (
 	github.com/docker/go-connections v0.4.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gojuno/minimock/v3 v3.0.10
+	github.com/google/uuid v1.3.0
 	github.com/hori-ryota/zaperr v0.0.0-20210301022522-bfd0551d7f64
 	github.com/joho/godotenv v1.5.1
 	github.com/pkg/errors v0.9.1
@@ -76,7 +77,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/btree v1.1.2 // indirect
-	github.com/google/uuid v1.3.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/huandu/xstrings v1.3.2 // indirect
 	github.com/klauspost/compress v1.11.13 // indirect

@@ -15,6 +15,7 @@ type Metadata struct {
 	Name                  string            `json:"name"`
 	Variants              []VariantMetadata `json:"variants"`
 	AllowMultipleVariants bool              `json:"allow_multiple_variants"`
+	DownloaderName        string            `json:"downloader_name"`
 }
 
 type VariantMetadata struct {

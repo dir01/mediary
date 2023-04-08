@@ -15,5 +15,6 @@
       "id": "Audio (mp3), Low Quality"
     }
   ],
-  "allow_multiple_variants": false
+  "allow_multiple_variants": false,
+  "downloader_name": "ytdl"
 }

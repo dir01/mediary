@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"strings"
 	"time"
 
 	"github.com/dir01/mediary/service"
@@ -44,10 +43,7 @@ func (y *YtdlDownloader) AcceptsURL(url string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	_, err := y.GetMetadata(ctx, url)
-	if err != nil {
-		return false
-	}
-	return true
+	return err == nil
 }
 
 func (y *YtdlDownloader) GetMetadata(ctx context.Context, url string) (*service.Metadata, error) {
@@ -73,6 +69,7 @@ func (y *YtdlDownloader) GetMetadata(ctx context.Context, url string) (*service.
 		Name:                  ytdljson.Title,
 		Variants:              variants,
 		AllowMultipleVariants: false,
+		DownloaderName:        "ytdl",
 	}, nil
 }
 
@@ -126,28 +123,4 @@ func (y *YtdlDownloader) runYTDL(ctx context.Context, args ...string) (out []byt
 		)
 	}
 	return out, nil
-}
-
-func (y *YtdlDownloader) findAudioFormat(formats []format) *format {
-	audioFormats := make([]format, 0, len(formats))
-	for _, f := range formats {
-		if f.Acodec != "" && f.Vcodec == "none" {
-			audioFormats = append(audioFormats, f)
-		}
-	}
-	if len(audioFormats) == 0 {
-		return nil
-	}
-	bestFormat := audioFormats[0]
-	for _, f := range audioFormats {
-		if !strings.Contains(bestFormat.Acodec, "m4a") && strings.Contains(f.Acodec, "mp4a") {
-			bestFormat = f
-			continue
-		}
-		if strings.Contains(f.Acodec, "m4a") && strings.Contains(bestFormat.Acodec, "m4a") && f.Abr > bestFormat.Abr {
-			bestFormat = f
-			continue
-		}
-	}
-	return &bestFormat
 }

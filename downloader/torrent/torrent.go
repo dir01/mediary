@@ -68,6 +68,7 @@ func (td *Downloader) GetMetadata(ctx context.Context, url string) (*service.Met
 		Name:                  info.Name,
 		Variants:              variants,
 		AllowMultipleVariants: true,
+		DownloaderName:        "torrent",
 	}
 	return metadata, nil
 }
