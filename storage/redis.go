@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/dir01/mediary/service"
-	"github.com/go-redis/redis/v8"
 )
 
 func NewRedisStorage(rediClient *redis.Client, keyPrefix string) service.Storage {

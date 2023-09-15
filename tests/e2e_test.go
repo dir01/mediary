@@ -25,7 +25,6 @@ import (
 	jobsqueue "github.com/dir01/mediary/service/jobs_queue"
 	"github.com/dir01/mediary/storage"
 	"github.com/dir01/mediary/uploader"
-	"github.com/go-redis/redis/v8"
 	"go.uber.org/zap"
 )
 

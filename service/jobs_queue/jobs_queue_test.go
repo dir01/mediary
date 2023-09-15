@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"math/rand"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/dir01/mediary/tests"
-	"github.com/go-redis/redis/v8"
 	"go.uber.org/zap"
 )
 

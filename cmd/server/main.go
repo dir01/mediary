@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/dir01/mediary/downloader/ytdl"
 	"github.com/hori-ryota/zaperr"
+	"github.com/redis/go-redis/v9"
 	"log"
 	"net/http"
 	"os"
@@ -17,7 +18,6 @@ import (
 	"github.com/dir01/mediary/service/jobs_queue"
 	"github.com/dir01/mediary/storage"
 	"github.com/dir01/mediary/uploader"
-	"github.com/go-redis/redis/v8"
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 )

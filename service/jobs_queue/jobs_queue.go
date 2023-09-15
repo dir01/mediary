@@ -2,9 +2,9 @@ package jobsqueue
 
 import (
 	"context"
+	"github.com/redis/go-redis/v9"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/hori-ryota/zaperr"
 	work2 "github.com/taylorchu/work"
 	"go.uber.org/zap"
