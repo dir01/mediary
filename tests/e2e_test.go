@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -153,6 +154,24 @@ So all consecutive requests for the same URL will return the same metadata, and 
 			http.StatusOK,
 			func(rr *httptest.ResponseRecorder) {
 				AssertMatchesGoldenFile(t, rr.Body.Bytes(), "metadata_cached.json")
+			},
+		)
+	})
+
+	t.Run("POST /metadata", func(t *testing.T) {
+		docs.InsertText(`### '''POST /metadata'''
+
+As you could've noticed, in previous calls part of the URL was lost.
+To work around it, service also supports '''POST''' requests to '''/metadata''' endpoint.
+In this case, you can pass the URL in the JSON body of the request.`)
+
+		docs.PerformRequestForDocs(
+			"POST",
+			`/metadata`,
+			strings.NewReader(fmt.Sprintf(`{"url": "%s"}`, magnetURL)),
+			http.StatusOK,
+			func(rr *httptest.ResponseRecorder) {
+				AssertMatchesGoldenFile(t, rr.Body.Bytes(), "metadata_post.json")
 			},
 		)
 	})

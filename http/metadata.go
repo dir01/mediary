@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -19,11 +20,28 @@ func handleGetMetadata(svc *service.Service, timeout time.Duration) func(http.Re
 			ctx = ctx1
 		}
 
-		url := req.URL.Query().Get("url")
+		var url string
+		switch req.Method {
+		case http.MethodGet:
+			url = req.URL.Query().Get("url")
+		case http.MethodPost:
+			// read json body
+			var body struct {
+				URL string `json:"url"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+				respond(w, http.StatusBadRequest, err)
+				return
+			}
+			url = body.URL
+		default:
+			respond(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		}
 		if url == "" {
 			respond(w, http.StatusBadRequest, errors.New("missing url parameter"))
 			return
 		}
+
 		if metadata, err := svc.GetMetadata(ctx, url); err == nil {
 			respond(w, http.StatusOK, metadata)
 			return
