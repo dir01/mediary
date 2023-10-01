@@ -14,7 +14,7 @@ require (
 	github.com/hori-ryota/zaperr v0.0.0-20210301022522-bfd0551d7f64
 	github.com/joho/godotenv v1.5.1
 	github.com/pkg/errors v0.9.1
-	github.com/redis/go-redis/v9 v9.1.0
+	github.com/redis/go-redis/v9 v9.2.1
 	github.com/taylorchu/work v0.2.16
 	github.com/testcontainers/testcontainers-go v0.23.0
 	go.uber.org/zap v1.26.0
