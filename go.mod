@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.40.0
 	github.com/docker/go-connections v0.4.0
 	github.com/gojuno/minimock/v3 v3.1.3
-	github.com/google/uuid v1.4.0
+	github.com/google/uuid v1.6.0
 	github.com/hori-ryota/zaperr v0.0.0-20210301022522-bfd0551d7f64
 	github.com/joho/godotenv v1.5.1
 	github.com/pkg/errors v0.9.1
