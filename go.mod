@@ -15,7 +15,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/pkg/errors v0.9.1
 	github.com/redis/go-redis/v9 v9.5.1
-	github.com/taylorchu/work v0.2.17
+	github.com/taylorchu/work v0.3.0
 	github.com/testcontainers/testcontainers-go v0.27.0
 	go.uber.org/zap v1.26.0
 )
