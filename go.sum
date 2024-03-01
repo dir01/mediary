@@ -463,8 +463,8 @@ github.com/stretchr/testify v1.8.1/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o
 github.com/stretchr/testify v1.8.3/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 github.com/stretchr/testify v1.8.4 h1:CcVxjf3Q8PM0mHUKJCdn+eZZtm5yQwehR5yeSVQQcUk=
 github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
-github.com/taylorchu/work v0.2.17 h1:Zp3O5cYzWOVaNQtMgP5S35KqYaH0prTujM1lPeZ911M=
-github.com/taylorchu/work v0.2.17/go.mod h1:ZLKGwHCfUfsgYly1BCQkUCGPPY2yE8MoLL+90+kanvY=
+github.com/taylorchu/work v0.3.0 h1:MDOpEttpmjmj32DahzsmiJ0hyVkgzxcUd939Oxepi58=
+github.com/taylorchu/work v0.3.0/go.mod h1:ZLKGwHCfUfsgYly1BCQkUCGPPY2yE8MoLL+90+kanvY=
 github.com/testcontainers/testcontainers-go v0.27.0 h1:IeIrJN4twonTDuMuBNQdKZ+K97yd7VrmNGu+lDpYcDk=
 github.com/testcontainers/testcontainers-go v0.27.0/go.mod h1:+HgYZcd17GshBUZv9b+jKFJ198heWPQq3KQIp2+N+7U=
 github.com/tidwall/btree v1.7.0 h1:L1fkJH/AuEh5zBnnBbmTwQ5Lt+bRJ5A8EWecslvo9iI=
