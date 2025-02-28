@@ -1,6 +1,6 @@
 module github.com/dir01/mediary
 
-go 1.21
+go 1.24
 
 require (
 	github.com/anacrolix/torrent v1.52.5
