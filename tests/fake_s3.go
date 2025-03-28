@@ -48,7 +48,7 @@ func GetS3Client(ctx context.Context, bucketName string) (client *s3.Client, tea
 	}
 
 	endpoint := fmt.Sprintf("http://%s:%s", host, port.Port())
-	os.Setenv("AWS_ENDPOINT_URL_S3", endpoint)
+	_ = os.Setenv("AWS_ENDPOINT_URL_S3", endpoint)
 
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithRegion("us-east-1"),
