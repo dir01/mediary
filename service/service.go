@@ -45,14 +45,16 @@ type Service struct {
 	uploader       Uploader
 	log            *zap.Logger
 
-	// syncChansMap is used to synchronize the execution of the same task. Map key is the task key. Map value is the channel to which the task is sent.
+	// syncChansMap is used to synchronize the execution of the same task.
+	// Map key is the task key.
+	// Map value is the channel to which the task is sent.
 	syncChansMap map[string]chan func()
 
 	// syncChansMapMutex is used to synchronize access to syncChansMap.
 	syncChansMapMutex sync.Mutex
 }
 
-//go:generate minimock -i Downloader -o ./mocks/downloader_mock.go -g
+//go:generate  go tool github.com/gojuno/minimock/v3/cmd/minimock -i Downloader -o ./mocks/downloader_mock.go -g
 type Downloader interface {
 	// AcceptsURL tells whether the downloader can handle the given URL.
 	AcceptsURL(url string) bool
@@ -65,7 +67,7 @@ type Downloader interface {
 	Download(ctx context.Context, url string, filepaths []string) (filepathsMap map[string]string, err error)
 }
 
-//go:generate minimock -i JobsQueue -o ./mocks/jobs_queue_mock.go -g
+//go:generate  go tool github.com/gojuno/minimock/v3/cmd/minimock -i JobsQueue -o ./mocks/jobs_queue_mock.go -g
 type JobsQueue interface {
 	Publish(ctx context.Context, jobType string, payload any) error
 	Subscribe(ctx context.Context, jobType string, f func(payloadBytes []byte) error)
@@ -73,7 +75,7 @@ type JobsQueue interface {
 	Run()
 }
 
-//go:generate minimock -i Storage -o ./mocks/storage_mock.go -g
+//go:generate  go tool github.com/gojuno/minimock/v3/cmd/minimock -i Storage -o ./mocks/storage_mock.go -g
 type Storage interface {
 	GetMetadata(ctx context.Context, url string) (*Metadata, error)
 	SaveMetadata(ctx context.Context, metadata *Metadata) error
@@ -81,7 +83,7 @@ type Storage interface {
 	SaveJob(ctx context.Context, job *Job) error
 }
 
-//go:generate minimock -i MediaProcessor -o ./mocks/media_processor_mock.go -g
+//go:generate  go tool github.com/gojuno/minimock/v3/cmd/minimock -i MediaProcessor -o ./mocks/media_processor_mock.go -g
 type MediaProcessor interface {
 	Concatenate(ctx context.Context, filepaths []string, audioCodec string) (resultFilepath string, err error)
 	GetInfo(ctx context.Context, filepath string) (info *MediaInfo, err error)
@@ -92,7 +94,7 @@ type MediaInfo struct {
 	FileLenBytes int64
 }
 
-//go:generate minimock -i Uploader -o ./mocks/uploader_mock.go -g
+//go:generate  go tool github.com/gojuno/minimock/v3/cmd/minimock -i Uploader -o ./mocks/uploader_mock.go -g
 type Uploader interface {
 	Upload(ctx context.Context, filepath string, url string) (err error)
 }

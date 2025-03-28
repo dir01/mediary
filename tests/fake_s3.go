@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -47,12 +48,10 @@ func GetS3Client(ctx context.Context, bucketName string) (client *s3.Client, tea
 	}
 
 	endpoint := fmt.Sprintf("http://%s:%s", host, port.Port())
+	_ = os.Setenv("AWS_ENDPOINT_URL_S3", endpoint)
 
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithRegion("us-east-1"),
-		config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...any) (aws.Endpoint, error) {
-			return aws.Endpoint{URL: endpoint}, nil
-		})),
 		config.WithCredentialsProvider(credentials.StaticCredentialsProvider{
 			Value: aws.Credentials{
 				AccessKeyID: "dummy", SecretAccessKey: "dummy", SessionToken: "dummy",
@@ -74,40 +73,3 @@ func GetS3Client(ctx context.Context, bucketName string) (client *s3.Client, tea
 
 	return client, teardown, nil
 }
-
-//func GetS3Client(ctx context.Context, bucketName string) (*s3.S3, error) {
-//	var targetPort nat.Port = "9090"
-//
-//	req := testcontainers.ContainerRequest{
-//		Image:        "adobe/s3mock",
-//		ExposedPorts: []string{fmt.Sprintf("%s/tcp", targetPort)},
-//		Env:          map[string]string{"debug": "true", "trace": "true", "initialBuckets": bucketName, "root": "/tmp/s3mock"},
-//		WaitingFor:   wait.ForListeningPort(targetPort).WithStartupTimeout(5 * time.Minute),
-//	}
-//
-//	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-//		ContainerRequest: req,
-//		Started:          true,
-//	})
-//	if err != nil {
-//		return nil, fmt.Errorf("failed to start container: %w", err)
-//	}
-//
-//	ip, err := container.Host(ctx)
-//	if err != nil {
-//		return nil, fmt.Errorf("failed to get container host: %w", err)
-//	}
-//
-//	port, err := container.MappedPort(ctx, targetPort)
-//	if err != nil {
-//		return nil, fmt.Errorf("failed to get container port: %w", err)
-//	}
-//
-//	sess, err := session.NewSession(&aws.Config{
-//		Region:   aws.String("eu-central-1"),
-//		Endpoint: aws.String(fmt.Sprintf("http://%s:%s", ip, port.Port())),
-//	})
-//	s3Client := s3.New(sess, aws.NewConfig().WithS3ForcePathStyle(true))
-//
-//	return s3Client, nil
-//}

@@ -19,7 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/dir01/mediary/downloader"
 	"github.com/dir01/mediary/downloader/torrent"
-	"github.com/dir01/mediary/downloader/ytdl"
+	"github.com/dir01/mediary/downloader/ytdlp"
 	http2 "github.com/dir01/mediary/http"
 	"github.com/dir01/mediary/media_processor"
 	"github.com/dir01/mediary/service"
@@ -48,12 +48,12 @@ func TestApplication(t *testing.T) {
 		t.Fatalf("error creating torrent downloader: %v", err)
 	}
 
-	ytdlDwn, err := ytdl.New(GetYtdlDir(t), os.TempDir(), logger)
+	ytdlpDwn, err := ytdlp.New(os.TempDir(), logger)
 	if err != nil {
 		t.Fatalf("error creating ytdl downloader: %v", err)
 	}
 
-	dwn := downloader.NewCompositeDownloader([]service.Downloader{torrDwn, ytdlDwn})
+	dwn := downloader.NewCompositeDownloader([]service.Downloader{torrDwn, ytdlpDwn})
 
 	redisURL, teardownRedis, err := GetFakeRedisURL(context.Background())
 	defer teardownRedis()
@@ -200,7 +200,7 @@ Take this into account while presenting format options to user`)
 
 		start := time.Now()
 		for {
-			if time.Since(start) > 10*time.Second {
+			if time.Since(start) > 20*time.Second {
 				t.Fatalf("timeout waiting for metadata")
 			}
 			resp := docs.PerformRequest("GET", `/metadata?url=`+youtubeURL, nil, 0, nil)

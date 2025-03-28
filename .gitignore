@@ -3,3 +3,4 @@ bin/
 .torrent.db*
 coverage.out
 vendor
+.aider*

@@ -2,49 +2,50 @@ build: prebuild
 	@echo "+ $@"
 	go build -o bin/server ./cmd/server
 
-.PHONY: run
 run:
 	@echo "+ $@"
 	REDIS_URL=redis://localhost:6379 go run ./cmd/server
+.PHONY: run
 
-.PHONY: test
 test:
 	@echo "+ $@"
 	go test -v -failfast -race ./... -coverprofile=coverage.out
+.PHONY: test
 
-.PHONY: prebuild
 prebuild:
 	@echo "+ $@"
 	go mod tidy
 	go mod vendor
+.PHONY: prebuild
 
-.PHONY: precommit
 precommit: prebuild lint test
+.PHONY: precommit
 
 lint:
-	docker run -t --rm -v $$(pwd):/app -w /app golangci/golangci-lint:v1.50.1 golangci-lint run -v --timeout 5m
+	docker run -t --rm -v $$(pwd):/app -w /app golangci/golangci-lint:v2.0.2 golangci-lint run -v --timeout 5m
+.PHONY: lint
 
-.PHONY: test-e2e-gen-docs
 test-e2e-gen-docs:
 	@echo "+ $@"
 	go test -v -timeout 30m -failfast -race -tags gen_docs ./... -coverprofile=coverage.out
+.PHONY: test-e2e-gen-docs
 
-.PHONY: generate
-generate:
+generate: prebuild
 	@echo "+ $@"
 	go generate ./...
+.PHONY: generate
 
-.PHONY: cover
 cover:
 	@echo "+ $@"
 	go tool cover -html=coverage.out
+.PHONY: cover
 
-.PHONY: docker-build
 docker-build:
 	@echo "+ $@"
 	docker build -t ghcr.io/dir01/mediary:alpha .
+.PHONY: docker-build
 
-.PHONY: docker-push
 docker-push:
 	@echo "+ $@"
 	docker push ghcr.io/dir01/mediary:alpha
+.PHONY: docker-push

@@ -1,15 +1,16 @@
-package ytdl
+package ytdlp
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/hori-ryota/zaperr"
 	"os"
 	"os/exec"
 	"path"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/hori-ryota/zaperr"
 
 	"github.com/dir01/mediary/service"
 	"go.uber.org/zap"
@@ -24,38 +25,45 @@ const (
 	formatTypeAudioLQ = "Audio (mp3), Low Quality"
 )
 
-func New(ytdlDir string, dataDir string, logger *zap.Logger) (*YtdlDownloader, error) {
-	d := &YtdlDownloader{dataDir: dataDir, ytdlDir: ytdlDir, log: logger}
+func New(dataDir string, logger *zap.Logger) (*YtdlpDownloader, error) {
+	d := &YtdlpDownloader{dataDir: dataDir, log: logger}
 	var _ service.Downloader = d
 	return d, nil
 }
 
-type YtdlDownloader struct {
-	// directory where the downloaded files will be stored (tempdir)
+type YtdlpDownloader struct {
+	// dataDir is a location for temporary storage of downloaded files
 	dataDir string
-	// directory where the https://github.com/ytdl-org/youtube-dl repo is cloned to
-	// we use cloned version because official version is too outdated
-	ytdlDir string
 	log     *zap.Logger
 }
 
-func (y *YtdlDownloader) AcceptsURL(url string) bool {
+func (y *YtdlpDownloader) AcceptsURL(url string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+
 	_, err := y.GetMetadata(ctx, url)
-	return err == nil
+	if err != nil {
+		y.log.Debug("yt-dlp get metadata", zap.Error(err))
+
+		return false
+	}
+
+	return true
 }
 
-func (y *YtdlDownloader) GetMetadata(ctx context.Context, url string) (*service.Metadata, error) {
-	out, err := y.runYTDL(ctx, "--dump-json", url)
+func (y *YtdlpDownloader) GetMetadata(ctx context.Context, url string) (*service.Metadata, error) {
+	out, err := y.runYTDLP(ctx, "--dump-json", url)
 	if err != nil {
 		return nil, err
 	}
 
-	var ytdljson ytdlJSON
-	if err = json.Unmarshal(out, &ytdljson); err != nil {
+	var ytdlpjson ytdlpJSON
+
+	if err = json.Unmarshal(out, &ytdlpjson); err != nil {
 		return nil, err
 	}
+
+	y.log.Debug("metadata unmarshal success", zap.String("url", url))
 
 	variants := []service.VariantMetadata{
 		{ID: formatTypeVideo},
@@ -65,15 +73,15 @@ func (y *YtdlDownloader) GetMetadata(ctx context.Context, url string) (*service.
 	}
 
 	return &service.Metadata{
-		URL:                   ytdljson.WebpageUrl,
-		Name:                  ytdljson.Title,
+		URL:                   ytdlpjson.WebpageUrl,
+		Name:                  ytdlpjson.Title,
 		Variants:              variants,
 		AllowMultipleVariants: false,
 		DownloaderName:        "ytdl",
 	}, nil
 }
 
-func (y *YtdlDownloader) Download(ctx context.Context, url string, filepaths []string) (filepathsMap map[string]string, err error) {
+func (y *YtdlpDownloader) Download(ctx context.Context, url string, filepaths []string) (filepathsMap map[string]string, err error) {
 	if len(filepaths) != 1 {
 		return nil, fmt.Errorf("expected 1 filepath, got %d", len(filepaths))
 	}
@@ -100,27 +108,29 @@ func (y *YtdlDownloader) Download(ctx context.Context, url string, filepaths []s
 	}
 	args = append(args, "--output", destinationPath)
 
-	if _, err := y.runYTDL(ctx, args...); err != nil {
+	if _, err := y.runYTDLP(ctx, args...); err != nil {
 		return nil, err
 	}
 
 	return map[string]string{ytFormat: destinationPath}, nil
 }
 
-func (y *YtdlDownloader) runYTDL(ctx context.Context, args ...string) (out []byte, err error) {
-	ytdlPath := path.Join(y.ytdlDir, "bin", "youtube-dl")
-	args = append([]string{ytdlPath}, args...)
-	cmd := exec.CommandContext(context.Background(), "python3", args...)
-	cmd.Env = append(cmd.Env, "PYTHONPATH="+y.ytdlDir, "PATH="+os.Getenv("PATH"))
+func (y *YtdlpDownloader) runYTDLP(ctx context.Context, args ...string) (out []byte, err error) {
+	y.log.Debug("running yt-dlp", zap.Strings("args", args))
+
+	cmd := exec.CommandContext(ctx, "yt-dlp", args...)
+	cmd.Env = append(cmd.Env, "PATH="+os.Getenv("PATH"))
+
 	out, err = cmd.CombinedOutput()
 	if err != nil {
 		return nil, zaperr.Wrap(
 			err,
-			"failed to run youtube-dl",
+			"failed to run yt-dlp",
 			zap.Strings("args", args),
 			zap.String("combined_output", string(out)),
 			zap.Strings("env", cmd.Env),
 		)
 	}
+
 	return out, nil
 }

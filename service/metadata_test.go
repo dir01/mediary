@@ -22,9 +22,9 @@ func TestGetMetadata(t *testing.T) {
 		StorageGetResponse *service.Metadata
 		StorageGetError    error
 
-		DownloaderNotFound bool
-		DownloaderResponse *service.Metadata
-		DownloaderError    error
+		DownloaderAcceptsURL bool
+		DownloaderResponse   *service.Metadata
+		DownloaderError      error
 
 		StorageSaveResponse error
 
@@ -41,35 +41,39 @@ func TestGetMetadata(t *testing.T) {
 			ExpectedResponse:   &service.Metadata{Name: "some-name"},
 		},
 		{
-			Name:               "storage get returns nil, downloader responds",
-			StorageGetResponse: nil,
-			DownloaderResponse: &service.Metadata{Name: "some-name"},
-			ExpectedResponse:   &service.Metadata{Name: "some-name"},
+			Name:                 "storage get returns nil, downloader responds",
+			StorageGetResponse:   nil,
+			DownloaderAcceptsURL: true,
+			DownloaderResponse:   &service.Metadata{Name: "some-name"},
+			ExpectedResponse:     &service.Metadata{Name: "some-name"},
 		},
 		{
-			Name:               "storage get errors, downloader responds",
-			StorageGetError:    fmt.Errorf("some-error"),
-			DownloaderResponse: &service.Metadata{Name: "some-name"},
-			ExpectedResponse:   &service.Metadata{Name: "some-name"},
+			Name:                 "storage get errors, downloader responds",
+			StorageGetError:      fmt.Errorf("some-error"),
+			DownloaderAcceptsURL: true,
+			DownloaderResponse:   &service.Metadata{Name: "some-name"},
+			ExpectedResponse:     &service.Metadata{Name: "some-name"},
 		},
 		{
-			Name:                "storage get errors, downloader responds, storage set errors",
-			StorageGetError:     fmt.Errorf("some-error"),
-			DownloaderResponse:  &service.Metadata{Name: "some-name"},
-			StorageSaveResponse: fmt.Errorf("storage-save-error"),
-			ExpectedResponse:    &service.Metadata{Name: "some-name"},
+			Name:                 "storage get errors, downloader responds, storage set errors",
+			StorageGetError:      fmt.Errorf("some-error"),
+			DownloaderAcceptsURL: true,
+			DownloaderResponse:   &service.Metadata{Name: "some-name"},
+			StorageSaveResponse:  fmt.Errorf("storage-save-error"),
+			ExpectedResponse:     &service.Metadata{Name: "some-name"},
 		},
 		{
-			Name:               "storage get returns nil, downloader does not match",
-			StorageGetResponse: nil,
-			DownloaderNotFound: true,
-			ExpectedResponse:   nil,
-			ExpectedError:      errors.New("failed to get metadata: url not supported"),
+			Name:                 "storage get returns nil, downloader does not match",
+			StorageGetResponse:   nil,
+			DownloaderAcceptsURL: false,
+			ExpectedResponse:     nil,
+			ExpectedError:        errors.New("failed to get metadata: url not supported"),
 		},
 		{
-			Name:            "downloader errors",
-			DownloaderError: fmt.Errorf("some-error"),
-			ExpectedError:   fmt.Errorf("error getting metadata from downloader: some-error"),
+			Name:                 "downloader errors",
+			DownloaderAcceptsURL: true,
+			DownloaderError:      fmt.Errorf("some-error"),
+			ExpectedError:        fmt.Errorf("error getting metadata from downloader: some-error"),
 		},
 	} {
 		t.Run(tc.Name, func(t *testing.T) {
@@ -78,35 +82,39 @@ func TestGetMetadata(t *testing.T) {
 			storage := mocks.NewStorageMock(mc)
 			queue := mocks.NewJobsQueueMock(mc)
 			queue.
-				SubscribeMock.Set(func(ctx context.Context, jobType string, f1 func(payloadBytes []byte) error) {}).
-				PublishMock.Set(func(ctx context.Context, jobType string, payload any) (err error) { return nil }).
-				RunMock.Set(func() {}).
-				ShutdownMock.Set(func() {})
+				SubscribeMock.Optional().Set(func(ctx context.Context, jobType string, f1 func(payloadBytes []byte) error) {}).
+				RunMock.Optional().Set(func() {}).
+				PublishMock.Optional().Set(func(ctx context.Context, jobType string, payload any) (err error) { return nil }).
+				ShutdownMock.Optional().Set(func() {})
+
 			svc := service.NewService(dwn, storage, queue, nil, nil, logger)
 			svc.Start()
 			defer svc.Stop()
 
-			storage.GetMetadataMock.Set(func(ctx context.Context, u string) (r *service.Metadata, err error) {
+			storage.
+				GetMetadataMock.Optional().Set(func(ctx context.Context, u string) (r *service.Metadata, err error) {
 				if u != url {
 					t.Fatalf("expected url %s, got %s", url, u)
 				}
 				return tc.StorageGetResponse, tc.StorageGetError
 			})
 
-			if tc.DownloaderNotFound {
-				dwn.AcceptsURLMock.Return(false)
+			if tc.DownloaderAcceptsURL {
+				dwn.AcceptsURLMock.Optional().Return(true)
 			} else {
-				dwn.AcceptsURLMock.Return(true)
+				dwn.AcceptsURLMock.Optional().Return(false)
 			}
 
-			dwn.GetMetadataMock.Set(func(ctx context.Context, u string) (r *service.Metadata, err error) {
-				if u != url {
-					t.Fatalf("expected url %s, got %s", url, u)
-				}
-				return tc.DownloaderResponse, tc.DownloaderError
-			})
+			if tc.DownloaderResponse != nil || tc.DownloaderError != nil {
+				dwn.GetMetadataMock.Set(func(ctx context.Context, u string) (r *service.Metadata, err error) {
+					if u != url {
+						t.Fatalf("expected url %s, got %s", url, u)
+					}
+					return tc.DownloaderResponse, tc.DownloaderError
+				})
+			}
 
-			storage.SaveMetadataMock.Return(tc.StorageSaveResponse)
+			storage.SaveMetadataMock.Optional().Return(tc.StorageSaveResponse)
 
 			result, err := svc.GetMetadata(context.TODO(), url)
 
