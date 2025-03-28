@@ -1,11 +1,8 @@
 FROM golang:1.24-alpine
 
-RUN apk add --no-cache gcc musl-dev g++ ffmpeg git python3
+RUN apk add --no-cache gcc musl-dev g++ ffmpeg python3
 
-ENV YOUTUBEDL_DIR /opt/youtube-dl
-ENV YOUTUBEDL_REV 4549522
-RUN git clone https://github.com/ytdl-org/youtube-dl $YOUTUBEDL_DIR
-RUN cd $YOUTUBEDL_DIR && git checkout $YOUTUBEDL_REV
+RUN wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp && chmod +x /usr/local/bin/yt-dlp
 
 RUN mkdir /app
 ENV GOPATH ""

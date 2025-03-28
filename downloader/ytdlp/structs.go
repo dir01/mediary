@@ -1,6 +1,6 @@
-package ytdl
+package ytdlp
 
-type ytdlJSON struct {
+type ytdlpJSON struct {
 	Id                 string      `json:"id"`
 	Title              string      `json:"title"`
 	Formats            []format    `json:"formats"`
@@ -39,7 +39,7 @@ type ytdlJSON struct {
 	Width              int         `json:"width"`
 	Height             int         `json:"height"`
 	Resolution         interface{} `json:"resolution"`
-	Fps                int         `json:"fps"`
+	Fps                float64     `json:"fps"`
 	Vcodec             string      `json:"vcodec"`
 	Vbr                float64     `json:"vbr"`
 	StretchedRatio     interface{} `json:"stretched_ratio"`
@@ -51,21 +51,21 @@ type ytdlJSON struct {
 }
 
 type format struct {
-	Asr        *int    `json:"asr"`
-	Filesize   int64   `json:"filesize"`
-	FormatId   string  `json:"format_id"`
-	FormatNote string  `json:"format_note"`
-	Fps        *int    `json:"fps"`
-	Height     *int    `json:"height"`
-	Quality    int     `json:"quality"`
-	Tbr        float64 `json:"tbr"`
-	Url        string  `json:"url"`
-	Width      *int    `json:"width"`
-	Ext        string  `json:"ext"`
-	Vcodec     string  `json:"vcodec"`
-	Acodec     string  `json:"acodec"`
-	Abr        float64 `json:"abr,omitempty"`
-	Protocol   string  `json:"protocol"`
+	Asr        *int     `json:"asr"`
+	Filesize   int64    `json:"filesize"`
+	FormatId   string   `json:"format_id"`
+	FormatNote string   `json:"format_note"`
+	Fps        *float64 `json:"fps"`
+	Height     *int     `json:"height"`
+	Quality    float64  `json:"quality"`
+	Tbr        float64  `json:"tbr"`
+	Url        string   `json:"url"`
+	Width      *int     `json:"width"`
+	Ext        string   `json:"ext"`
+	Vcodec     string   `json:"vcodec"`
+	Acodec     string   `json:"acodec"`
+	Abr        float64  `json:"abr,omitempty"`
+	Protocol   string   `json:"protocol"`
 	Fragments  []struct {
 		Url string `json:"url"`
 	} `json:"fragments,omitempty"`

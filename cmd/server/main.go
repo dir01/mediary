@@ -2,9 +2,6 @@ package main
 
 import (
 	"context"
-	"github.com/dir01/mediary/downloader/ytdl"
-	"github.com/hori-ryota/zaperr"
-	"github.com/redis/go-redis/v9"
 	"log"
 	"net/http"
 	"os"
@@ -12,13 +9,16 @@ import (
 
 	"github.com/dir01/mediary/downloader"
 	"github.com/dir01/mediary/downloader/torrent"
+	"github.com/dir01/mediary/downloader/ytdlp"
 	mediary_http "github.com/dir01/mediary/http"
 	"github.com/dir01/mediary/media_processor"
 	"github.com/dir01/mediary/service"
-	"github.com/dir01/mediary/service/jobs_queue"
+	jobsqueue "github.com/dir01/mediary/service/jobs_queue"
 	"github.com/dir01/mediary/storage"
 	"github.com/dir01/mediary/uploader"
+	"github.com/hori-ryota/zaperr"
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
@@ -37,8 +37,6 @@ func main() {
 	if _, ok := os.LookupEnv("BIND_ADDR"); ok {
 		bindAddr = os.Getenv("BIND_ADDR")
 	}
-
-	youtubedlDir := mustGetEnv("YOUTUBEDL_DIR")
 
 	var isDebug bool
 	if val, exists := os.LookupEnv("DEBUG"); exists && val != "" && val != "0" && val != "false" {
@@ -59,13 +57,13 @@ func main() {
 	defer func() { _ = logger.Sync() }()
 
 	// torrentDownloader downloads torrents
-	torrentDownloader, err := torrent.New(os.TempDir(), logger, isDebug)
+	torrentDownloader, err := torrent.New(os.TempDir(), logger, false)
 	if err != nil {
 		logger.Fatal("error creating torrent downloader", zap.Error(err))
 	}
 
-	// ytdlDownloader downloads YouTube videos (potentially - everything that youtubedl supports)
-	ytdlDownloader, err := ytdl.New(youtubedlDir, os.TempDir(), logger)
+	// ytdlDownloader downloads YouTube videos (potentially - everything that https://github.com/yt-dlp/yt-dlp  supports)
+	ytdlDownloader, err := ytdlp.New(os.TempDir(), logger)
 	if err != nil {
 		logger.Fatal("error creating ytdl downloader", zap.Error(err))
 	}

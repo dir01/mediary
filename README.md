@@ -57,11 +57,11 @@ $ curl -X GET '/metadata/long-polling?url=magnet:?xt=urn:btih:FB0B49D5E3E18E2986
     },
     {
       "id": "глава 1.mp3",
-      "length_bytes": 1181881
+      "length_bytes": 40623850
     },
     {
       "id": "глава 2.mp3",
-      "length_bytes": 1181881
+      "length_bytes": 42107250
     }
   ],
   "allow_multiple_variants": true,
@@ -88,11 +88,11 @@ $ curl -X GET '/metadata?url=magnet:?xt=urn:btih:FB0B49D5E3E18E29868C680D2F7BC00
     },
     {
       "id": "глава 1.mp3",
-      "length_bytes": 1181881
+      "length_bytes": 40623850
     },
     {
       "id": "глава 2.mp3",
-      "length_bytes": 1181881
+      "length_bytes": 42107250
     }
   ],
   "allow_multiple_variants": true,
@@ -119,11 +119,11 @@ $ curl -X POST '/metadata'--data-raw='{"url": "magnet:?xt=urn:btih:FB0B49D5E3E18
     },
     {
       "id": "глава 1.mp3",
-      "length_bytes": 1181881
+      "length_bytes": 40623850
     },
     {
       "id": "глава 2.mp3",
-      "length_bytes": 1181881
+      "length_bytes": 42107250
     }
   ],
   "allow_multiple_variants": true,
@@ -194,10 +194,10 @@ $ curl -X POST '/jobs'--data-raw='{
 			"01-002.mp3"
 		],
 		"audioCodec": "mp3",
-		"uploadUrl": "http://localhost:51169/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=dummy%2F20230916%2F%2Fs3%2Faws4_request&X-Amz-Date=20230916T202904Z&X-Amz-Expires=900&X-Amz-Security-Token=dummy&X-Amz-SignedHeaders=host&x-id=PutObject&X-Amz-Signature=30496441c038a34d2ce84df5548de36424989a60bb7a8bdd50826bab8bcebf52"
+		"uploadUrl": "http://localhost:63511/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20250328T055057Z&X-Amz-Expires=900&X-Amz-Security-Token=dummy&X-Amz-SignedHeaders=host&x-id=PutObject&X-Amz-Signature=d5b57e052672ea95b24ea792b5191f588a45429e3cafc392774b759cd3f9dcc7"
 	}
 }'
-{"status": "accepted", "id": "d530ada48ea0b6f480c077af49f62bc6"}
+{"status": "accepted", "id": "2416057c0c287c3d051da22dc0b307ec"}
 ```
 
 
@@ -209,19 +209,19 @@ To check the status of the job, you can use the `/jobs/:id` endpoint.
 0s after starting the job:
 
 ```
-$ curl -X GET '/jobs/d530ada48ea0b6f480c077af49f62bc6'
+$ curl -X GET '/jobs/2416057c0c287c3d051da22dc0b307ec'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
   "params": {
     "audioCodec": "mp3",
-    "uploadUrl": "http://localhost:51169/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20230916%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20230916T202904Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=30496441c038a34d2ce84df5548de36424989a60bb7a8bdd50826bab8bcebf52",
+    "uploadUrl": "http://localhost:63511/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request\u0026X-Amz-Date=20250328T055057Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=d5b57e052672ea95b24ea792b5191f588a45429e3cafc392774b759cd3f9dcc7",
     "variants": [
       "01-001.mp3",
       "01-002.mp3"
     ]
   },
-  "id": "d530ada48ea0b6f480c077af49f62bc6",
+  "id": "2416057c0c287c3d051da22dc0b307ec",
   "status": "created"
 }
 ```
@@ -230,64 +230,63 @@ $ curl -X GET '/jobs/d530ada48ea0b6f480c077af49f62bc6'
 1s later:
 
 ```
-$ curl -X GET '/jobs/d530ada48ea0b6f480c077af49f62bc6'
+$ curl -X GET '/jobs/2416057c0c287c3d051da22dc0b307ec'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
   "params": {
     "audioCodec": "mp3",
-    "uploadUrl": "http://localhost:51169/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20230916%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20230916T202904Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=30496441c038a34d2ce84df5548de36424989a60bb7a8bdd50826bab8bcebf52",
+    "uploadUrl": "http://localhost:63511/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request\u0026X-Amz-Date=20250328T055057Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=d5b57e052672ea95b24ea792b5191f588a45429e3cafc392774b759cd3f9dcc7",
     "variants": [
       "01-001.mp3",
       "01-002.mp3"
     ]
   },
-  "id": "d530ada48ea0b6f480c077af49f62bc6",
+  "id": "2416057c0c287c3d051da22dc0b307ec",
   "status": "downloading"
 }
 ```
 
 
-18s later:
+21s later:
 
 ```
-$ curl -X GET '/jobs/d530ada48ea0b6f480c077af49f62bc6'
+$ curl -X GET '/jobs/2416057c0c287c3d051da22dc0b307ec'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
   "params": {
     "audioCodec": "mp3",
-    "uploadUrl": "http://localhost:51169/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20230916%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20230916T202904Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=30496441c038a34d2ce84df5548de36424989a60bb7a8bdd50826bab8bcebf52",
+    "uploadUrl": "http://localhost:63511/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request\u0026X-Amz-Date=20250328T055057Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=d5b57e052672ea95b24ea792b5191f588a45429e3cafc392774b759cd3f9dcc7",
     "variants": [
       "01-001.mp3",
       "01-002.mp3"
     ]
   },
-  "id": "d530ada48ea0b6f480c077af49f62bc6",
+  "id": "2416057c0c287c3d051da22dc0b307ec",
   "status": "processing"
 }
 ```
 
 
-54s later:
+23s later:
 
 ```
-$ curl -X GET '/jobs/d530ada48ea0b6f480c077af49f62bc6'
+$ curl -X GET '/jobs/2416057c0c287c3d051da22dc0b307ec'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
   "params": {
     "audioCodec": "mp3",
-    "uploadUrl": "http://localhost:51169/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20230916%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20230916T202904Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=30496441c038a34d2ce84df5548de36424989a60bb7a8bdd50826bab8bcebf52",
+    "uploadUrl": "http://localhost:63511/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request\u0026X-Amz-Date=20250328T055057Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=d5b57e052672ea95b24ea792b5191f588a45429e3cafc392774b759cd3f9dcc7",
     "variants": [
       "01-001.mp3",
       "01-002.mp3"
     ]
   },
-  "id": "d530ada48ea0b6f480c077af49f62bc6",
+  "id": "2416057c0c287c3d051da22dc0b307ec",
   "status": "uploading",
-  "result_media_duration": 2649000000000,
-  "result_file_bytes": 42580796
+  "result_file_bytes": 42580566
 }
 ```
 
@@ -295,22 +294,21 @@ $ curl -X GET '/jobs/d530ada48ea0b6f480c077af49f62bc6'
 1s later:
 
 ```
-$ curl -X GET '/jobs/d530ada48ea0b6f480c077af49f62bc6'
+$ curl -X GET '/jobs/2416057c0c287c3d051da22dc0b307ec'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
   "params": {
     "audioCodec": "mp3",
-    "uploadUrl": "http://localhost:51169/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20230916%2F%2Fs3%2Faws4_request\u0026X-Amz-Date=20230916T202904Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=30496441c038a34d2ce84df5548de36424989a60bb7a8bdd50826bab8bcebf52",
+    "uploadUrl": "http://localhost:63511/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request\u0026X-Amz-Date=20250328T055057Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=d5b57e052672ea95b24ea792b5191f588a45429e3cafc392774b759cd3f9dcc7",
     "variants": [
       "01-001.mp3",
       "01-002.mp3"
     ]
   },
-  "id": "d530ada48ea0b6f480c077af49f62bc6",
+  "id": "2416057c0c287c3d051da22dc0b307ec",
   "status": "complete",
-  "result_media_duration": 2649000000000,
-  "result_file_bytes": 42580796
+  "result_file_bytes": 42580566
 }
 ```
 
@@ -325,10 +323,10 @@ $ curl -X POST '/jobs'--data-raw='{
 	"type": "upload_original",
 	"params": {
 		"variant": "Audio (mp3), Low Quality",
-		"uploadUrl": "http://localhost:51169/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=dummy%2F20230916%2F%2Fs3%2Faws4_request&X-Amz-Date=20230916T203019Z&X-Amz-Expires=900&X-Amz-Security-Token=dummy&X-Amz-SignedHeaders=host&x-id=PutObject&X-Amz-Signature=f1d37ccbe09a73b71f83dd60a6aa8ff2078847a01c146768c6092751f16f0952"
+		"uploadUrl": "http://localhost:63511/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20250328T055143Z&X-Amz-Expires=900&X-Amz-Security-Token=dummy&X-Amz-SignedHeaders=host&x-id=PutObject&X-Amz-Signature=390a7f86388332735e5889aa4d8fb6f43d9bbac9b18a8f95c3a530e732ea2c67"
 	}
 }'
-{"status": "accepted", "id": "01666b866a2b1eabc3189160ba6a3afa"}
+{"status": "accepted", "id": "a581ebd433a361a159995bf3f58c5769"}
 ```
 
 <!-- stop autogenerated samples -->

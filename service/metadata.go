@@ -46,12 +46,14 @@ func (svc *Service) GetMetadata(ctx context.Context, url string) (*Metadata, err
 func (svc *Service) doGetMetadata(ctx context.Context, url string) (*Metadata, error) {
 	zapFields := []zap.Field{zap.String("url", url)}
 	svc.log.Debug("getting metadata", zapFields...)
+
 	if metadata, err := svc.storage.GetMetadata(ctx, url); err != nil {
 		svc.log.Error(
 			"error getting metadata from storage, will continue",
 			append([]zap.Field{zaperr.ToField(err)}, zapFields...)...,
 		)
 	} else if metadata != nil {
+		svc.log.Debug("got metadata from storage", zap.Any("metadata", metadata))
 		return metadata, nil
 	}
 
@@ -59,6 +61,7 @@ func (svc *Service) doGetMetadata(ctx context.Context, url string) (*Metadata, e
 		return nil, zaperr.Wrap(ErrUrlNotSupported, "failed to get metadata", zapFields...)
 	}
 
+	svc.log.Debug("fetching metadata from downloader", zap.String("url", url))
 	metadata, err := svc.downloader.GetMetadata(ctx, url)
 	if err != nil {
 		svc.log.Error("error getting metadata from downloader", append([]zap.Field{zaperr.ToField(err)}, zapFields...)...)
