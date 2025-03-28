@@ -194,10 +194,10 @@ $ curl -X POST '/jobs'--data-raw='{
 			"01-002.mp3"
 		],
 		"audioCodec": "mp3",
-		"uploadUrl": "http://localhost:63511/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20250328T055057Z&X-Amz-Expires=900&X-Amz-Security-Token=dummy&X-Amz-SignedHeaders=host&x-id=PutObject&X-Amz-Signature=d5b57e052672ea95b24ea792b5191f588a45429e3cafc392774b759cd3f9dcc7"
+		"uploadUrl": "http://localhost:51380/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20250328T101739Z&X-Amz-Expires=900&X-Amz-Security-Token=dummy&X-Amz-SignedHeaders=host&x-id=PutObject&X-Amz-Signature=8b710b7240524f5167ca2fb6c28dd698e97f14343415d4020b2209fdeac85905"
 	}
 }'
-{"status": "accepted", "id": "2416057c0c287c3d051da22dc0b307ec"}
+{"status": "accepted", "id": "bcc6808aa7719bb37e77c5c61b3a3d32"}
 ```
 
 
@@ -209,19 +209,19 @@ To check the status of the job, you can use the `/jobs/:id` endpoint.
 0s after starting the job:
 
 ```
-$ curl -X GET '/jobs/2416057c0c287c3d051da22dc0b307ec'
+$ curl -X GET '/jobs/bcc6808aa7719bb37e77c5c61b3a3d32'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
   "params": {
     "audioCodec": "mp3",
-    "uploadUrl": "http://localhost:63511/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request\u0026X-Amz-Date=20250328T055057Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=d5b57e052672ea95b24ea792b5191f588a45429e3cafc392774b759cd3f9dcc7",
+    "uploadUrl": "http://localhost:51380/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request\u0026X-Amz-Date=20250328T101739Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=8b710b7240524f5167ca2fb6c28dd698e97f14343415d4020b2209fdeac85905",
     "variants": [
       "01-001.mp3",
       "01-002.mp3"
     ]
   },
-  "id": "2416057c0c287c3d051da22dc0b307ec",
+  "id": "bcc6808aa7719bb37e77c5c61b3a3d32",
   "status": "created"
 }
 ```
@@ -230,61 +230,61 @@ $ curl -X GET '/jobs/2416057c0c287c3d051da22dc0b307ec'
 1s later:
 
 ```
-$ curl -X GET '/jobs/2416057c0c287c3d051da22dc0b307ec'
+$ curl -X GET '/jobs/bcc6808aa7719bb37e77c5c61b3a3d32'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
   "params": {
     "audioCodec": "mp3",
-    "uploadUrl": "http://localhost:63511/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request\u0026X-Amz-Date=20250328T055057Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=d5b57e052672ea95b24ea792b5191f588a45429e3cafc392774b759cd3f9dcc7",
+    "uploadUrl": "http://localhost:51380/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request\u0026X-Amz-Date=20250328T101739Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=8b710b7240524f5167ca2fb6c28dd698e97f14343415d4020b2209fdeac85905",
     "variants": [
       "01-001.mp3",
       "01-002.mp3"
     ]
   },
-  "id": "2416057c0c287c3d051da22dc0b307ec",
+  "id": "bcc6808aa7719bb37e77c5c61b3a3d32",
   "status": "downloading"
 }
 ```
 
 
-21s later:
+3s later:
 
 ```
-$ curl -X GET '/jobs/2416057c0c287c3d051da22dc0b307ec'
+$ curl -X GET '/jobs/bcc6808aa7719bb37e77c5c61b3a3d32'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
   "params": {
     "audioCodec": "mp3",
-    "uploadUrl": "http://localhost:63511/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request\u0026X-Amz-Date=20250328T055057Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=d5b57e052672ea95b24ea792b5191f588a45429e3cafc392774b759cd3f9dcc7",
+    "uploadUrl": "http://localhost:51380/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request\u0026X-Amz-Date=20250328T101739Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=8b710b7240524f5167ca2fb6c28dd698e97f14343415d4020b2209fdeac85905",
     "variants": [
       "01-001.mp3",
       "01-002.mp3"
     ]
   },
-  "id": "2416057c0c287c3d051da22dc0b307ec",
+  "id": "bcc6808aa7719bb37e77c5c61b3a3d32",
   "status": "processing"
 }
 ```
 
 
-23s later:
+27s later:
 
 ```
-$ curl -X GET '/jobs/2416057c0c287c3d051da22dc0b307ec'
+$ curl -X GET '/jobs/bcc6808aa7719bb37e77c5c61b3a3d32'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
   "params": {
     "audioCodec": "mp3",
-    "uploadUrl": "http://localhost:63511/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request\u0026X-Amz-Date=20250328T055057Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=d5b57e052672ea95b24ea792b5191f588a45429e3cafc392774b759cd3f9dcc7",
+    "uploadUrl": "http://localhost:51380/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request\u0026X-Amz-Date=20250328T101739Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=8b710b7240524f5167ca2fb6c28dd698e97f14343415d4020b2209fdeac85905",
     "variants": [
       "01-001.mp3",
       "01-002.mp3"
     ]
   },
-  "id": "2416057c0c287c3d051da22dc0b307ec",
+  "id": "bcc6808aa7719bb37e77c5c61b3a3d32",
   "status": "uploading",
   "result_file_bytes": 42580566
 }
@@ -294,19 +294,19 @@ $ curl -X GET '/jobs/2416057c0c287c3d051da22dc0b307ec'
 1s later:
 
 ```
-$ curl -X GET '/jobs/2416057c0c287c3d051da22dc0b307ec'
+$ curl -X GET '/jobs/bcc6808aa7719bb37e77c5c61b3a3d32'
 {
   "url": "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73\u0026tr=http%3A%2F%2Fbt3.t-ru.org",
   "type": "concatenate",
   "params": {
     "audioCodec": "mp3",
-    "uploadUrl": "http://localhost:63511/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request\u0026X-Amz-Date=20250328T055057Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=d5b57e052672ea95b24ea792b5191f588a45429e3cafc392774b759cd3f9dcc7",
+    "uploadUrl": "http://localhost:51380/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request\u0026X-Amz-Date=20250328T101739Z\u0026X-Amz-Expires=900\u0026X-Amz-Security-Token=dummy\u0026X-Amz-SignedHeaders=host\u0026x-id=PutObject\u0026X-Amz-Signature=8b710b7240524f5167ca2fb6c28dd698e97f14343415d4020b2209fdeac85905",
     "variants": [
       "01-001.mp3",
       "01-002.mp3"
     ]
   },
-  "id": "2416057c0c287c3d051da22dc0b307ec",
+  "id": "bcc6808aa7719bb37e77c5c61b3a3d32",
   "status": "complete",
   "result_file_bytes": 42580566
 }
@@ -323,10 +323,10 @@ $ curl -X POST '/jobs'--data-raw='{
 	"type": "upload_original",
 	"params": {
 		"variant": "Audio (mp3), Low Quality",
-		"uploadUrl": "http://localhost:63511/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20250328T055143Z&X-Amz-Expires=900&X-Amz-Security-Token=dummy&X-Amz-SignedHeaders=host&x-id=PutObject&X-Amz-Signature=390a7f86388332735e5889aa4d8fb6f43d9bbac9b18a8f95c3a530e732ea2c67"
+		"uploadUrl": "http://localhost:51380/some-bucket/some-path/some-file.some-ext?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=dummy%2F20250328%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20250328T101811Z&X-Amz-Expires=900&X-Amz-Security-Token=dummy&X-Amz-SignedHeaders=host&x-id=PutObject&X-Amz-Signature=b5c2e1f60538d8b0556d6138747e15007619116fa278ca6a680bcd4363aa62df"
 	}
 }'
-{"status": "accepted", "id": "a581ebd433a361a159995bf3f58c5769"}
+{"status": "accepted", "id": "db67e159d89bc23ef65dec01940b7007"}
 ```
 
 <!-- stop autogenerated samples -->

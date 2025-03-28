@@ -3,9 +3,10 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/hori-ryota/zaperr"
 	"go.uber.org/zap"
-	"time"
 )
 
 var ErrUrlNotSupported = fmt.Errorf("url not supported")
@@ -31,6 +32,7 @@ func (svc *Service) GetMetadata(ctx context.Context, url string) (*Metadata, err
 	svc.execSynced(url, func() {
 		ctx, cancel := context.WithTimeout(context.TODO(), 30*time.Minute)
 		defer cancel()
+
 		metadata, err = svc.doGetMetadata(ctx, url)
 		close(done)
 	})

@@ -2,10 +2,10 @@ package jobsqueue
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"github.com/redis/go-redis/v9"
-	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -127,7 +127,7 @@ func eventually(timeout time.Duration, f func() bool) bool {
 
 func randomPrefix() (str string) {
 	b := make([]byte, 24)
-	rand.Read(b)
+	_, _ = rand.Read(b)
 	return fmt.Sprintf("mediary:%x", b)
 
 }
