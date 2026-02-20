@@ -87,11 +87,18 @@ type Storage interface {
 type MediaProcessor interface {
 	Concatenate(ctx context.Context, filepaths []string, audioCodec string) (resultFilepath string, err error)
 	GetInfo(ctx context.Context, filepath string) (info *MediaInfo, err error)
+	AddChapterTags(ctx context.Context, filepath string, chapters []Chapter) error
 }
 
 type MediaInfo struct {
 	Duration     time.Duration
 	FileLenBytes int64
+}
+
+type Chapter struct {
+	Title     string
+	StartTime time.Duration
+	EndTime   time.Duration
 }
 
 //go:generate  go tool github.com/gojuno/minimock/v3/cmd/minimock -i Uploader -o ./mocks/uploader_mock.go -g
