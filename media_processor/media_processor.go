@@ -134,7 +134,7 @@ func (conv *FFMpegMediaProcessor) AddChapterTags(_ context.Context, filepath str
 	}
 	defer func() { _ = tag.Close() }()
 
-	tag.SetVersion(3) // ID3v2.3 for broad player compatibility
+	tag.SetVersion(4) // ID3v2.4 — supports UTF-8 text encoding natively
 
 	childIDs := make([]string, 0, len(chapters))
 
