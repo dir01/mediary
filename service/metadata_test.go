@@ -4,16 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"reflect"
 	"testing"
 
 	"github.com/dir01/mediary/service"
 	"github.com/dir01/mediary/service/mocks"
 	"github.com/gojuno/minimock/v3"
-	"go.uber.org/zap"
 )
 
-var logger = zap.NewNop()
+var logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 func TestGetMetadata(t *testing.T) {
 	type testCase struct {

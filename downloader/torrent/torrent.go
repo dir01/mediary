@@ -3,7 +3,7 @@ package torrent
 import (
 	"context"
 	"fmt"
-	"github.com/hori-ryota/zaperr"
+	"log/slog"
 	"os"
 	"path"
 	"sort"
@@ -13,10 +13,9 @@ import (
 
 	anacrolixTorrent "github.com/anacrolix/torrent"
 	"github.com/dir01/mediary/service"
-	"go.uber.org/zap"
 )
 
-func New(dataDir string, logger *zap.Logger, isDebug bool) (*Downloader, error) {
+func New(dataDir string, logger *slog.Logger, isDebug bool) (*Downloader, error) {
 	cfg := anacrolixTorrent.NewDefaultClientConfig()
 	cfg.ListenPort = 0
 	cfg.DataDir = dataDir
@@ -33,7 +32,7 @@ func New(dataDir string, logger *zap.Logger, isDebug bool) (*Downloader, error) 
 type Downloader struct {
 	torrentClient *anacrolixTorrent.Client
 	dataDir       string
-	log           *zap.Logger
+	log           *slog.Logger
 }
 
 func (td *Downloader) AcceptsURL(url string) bool {
@@ -76,19 +75,19 @@ func (td *Downloader) GetMetadata(ctx context.Context, url string) (*service.Met
 func (td *Downloader) Download(ctx context.Context, url string, filepaths []string) (filepathsMap map[string]string, err error) {
 	// if datadir is not a directory, we can't download anything
 	if stat, err := os.Stat(td.dataDir); err != nil || stat == nil || !stat.IsDir() {
-		td.log.Error("datadir is not a directory", zap.String("datadir", td.dataDir), zap.String("url", url))
+		td.log.Error("datadir is not a directory", slog.String("datadir", td.dataDir), slog.String("url", url))
 		return nil, fmt.Errorf("datadir %s is not a directory", td.dataDir)
 	}
 
 	torr, err := td.torrentClient.AddMagnet(url)
 	if err != nil {
-		td.log.Debug("failed to add magnet", zap.String("url", url), zaperr.ToField(err))
+		td.log.Debug("failed to add magnet", slog.String("url", url), slog.Any("error", err))
 		return nil, err
 	}
 
 	select {
 	case <-ctx.Done():
-		td.log.Debug("context cancelled", zap.String("url", url), zap.Error(ctx.Err()))
+		td.log.Debug("context cancelled", slog.String("url", url), slog.Any("error", ctx.Err()))
 		return nil, ctx.Err()
 	case <-torr.GotInfo():
 		break
@@ -103,10 +102,10 @@ func (td *Downloader) Download(ctx context.Context, url string, filepaths []stri
 	for _, tf := range torr.Files() {
 		tf := tf
 		if _, exists := fpMap[tf.DisplayPath()]; !exists {
-			td.log.Debug("skipping file", zap.String("filepath", tf.DisplayPath()), zap.String("url", url))
+			td.log.Debug("skipping file", slog.String("filepath", tf.DisplayPath()), slog.String("url", url))
 			continue
 		} else {
-			td.log.Debug("downloading file", zap.String("filepath", tf.DisplayPath()), zap.String("url", url))
+			td.log.Debug("downloading file", slog.String("filepath", tf.DisplayPath()), slog.String("url", url))
 
 			wg.Add(1)
 			go func() {
@@ -118,7 +117,7 @@ func (td *Downloader) Download(ctx context.Context, url string, filepaths []stri
 						tf.SetPriority(anacrolixTorrent.PiecePriorityNone)
 						return
 					case <-time.After(1 * time.Second):
-						td.log.Debug("downloading file", zap.String("filepath", tf.DisplayPath()), zap.String("url", url), zap.Int64("downloaded", tf.BytesCompleted()), zap.Int64("total", tf.Length()))
+						td.log.Debug("downloading file", slog.String("filepath", tf.DisplayPath()), slog.String("url", url), slog.Int64("downloaded", tf.BytesCompleted()), slog.Int64("total", tf.Length()))
 						if tf.BytesCompleted() == tf.Length() {
 							return
 						}
@@ -129,13 +128,13 @@ func (td *Downloader) Download(ctx context.Context, url string, filepaths []stri
 		}
 	}
 	wg.Wait()
-	td.log.Debug("all files downloaded", zap.String("url", url))
+	td.log.Debug("all files downloaded", slog.String("url", url))
 
 	filepathsMap = make(map[string]string)
 	for _, f := range filepaths {
 		filepathsMap[f] = path.Join(td.dataDir, torr.Name(), f)
 	}
-	td.log.Debug("filepaths map", zap.String("url", url), zap.Any("filepathsMap", filepathsMap))
+	td.log.Debug("filepaths map", slog.String("url", url), slog.Any("filepathsMap", filepathsMap))
 
 	return filepathsMap, nil
 }

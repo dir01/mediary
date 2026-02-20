@@ -5,20 +5,17 @@ go 1.24
 require (
 	github.com/anacrolix/torrent v1.58.1
 	github.com/aws/aws-sdk-go-v2 v1.36.3
-	github.com/bogem/id3v2/v2 v2.1.4
 	github.com/aws/aws-sdk-go-v2/config v1.29.12
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.65
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.78.2
+	github.com/bogem/id3v2/v2 v2.1.4
 	github.com/docker/go-connections v0.5.0
 	github.com/gojuno/minimock/v3 v3.4.5
 	github.com/google/uuid v1.6.0
-	github.com/hori-ryota/zaperr v0.0.0-20210301022522-bfd0551d7f64
 	github.com/joho/godotenv v1.5.1
-	github.com/pkg/errors v0.9.1
 	github.com/redis/go-redis/v9 v9.7.3
 	github.com/taylorchu/work v0.3.1
 	github.com/testcontainers/testcontainers-go v0.36.0
-	go.uber.org/zap v1.27.0
 )
 
 require (
@@ -122,6 +119,7 @@ require (
 	github.com/pion/transport/v3 v3.0.7 // indirect
 	github.com/pion/turn/v4 v4.0.0 // indirect
 	github.com/pion/webrtc/v4 v4.0.14 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/protolambda/ctxlock v0.1.0 // indirect

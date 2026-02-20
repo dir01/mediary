@@ -3,10 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
-
-	"github.com/hori-ryota/zaperr"
-	"go.uber.org/zap"
 )
 
 var ErrUrlNotSupported = fmt.Errorf("url not supported")
@@ -46,34 +44,34 @@ func (svc *Service) GetMetadata(ctx context.Context, url string) (*Metadata, err
 }
 
 func (svc *Service) doGetMetadata(ctx context.Context, url string) (*Metadata, error) {
-	zapFields := []zap.Field{zap.String("url", url)}
-	svc.log.Debug("getting metadata", zapFields...)
+	logAttrs := []any{slog.String("url", url)}
+	svc.log.Debug("getting metadata", logAttrs...)
 
 	if metadata, err := svc.storage.GetMetadata(ctx, url); err != nil {
 		svc.log.Error(
 			"error getting metadata from storage, will continue",
-			append([]zap.Field{zaperr.ToField(err)}, zapFields...)...,
+			append([]any{slog.Any("error", err)}, logAttrs...)...,
 		)
 	} else if metadata != nil {
-		svc.log.Debug("got metadata from storage", zap.Any("metadata", metadata))
+		svc.log.Debug("got metadata from storage", slog.Any("metadata", metadata))
 		return metadata, nil
 	}
 
 	if !svc.downloader.AcceptsURL(url) {
-		return nil, zaperr.Wrap(ErrUrlNotSupported, "failed to get metadata", zapFields...)
+		return nil, fmt.Errorf("failed to get metadata: %w", ErrUrlNotSupported)
 	}
 
-	svc.log.Debug("fetching metadata from downloader", zap.String("url", url))
+	svc.log.Debug("fetching metadata from downloader", slog.String("url", url))
 	metadata, err := svc.downloader.GetMetadata(ctx, url)
 	if err != nil {
-		svc.log.Error("error getting metadata from downloader", append([]zap.Field{zaperr.ToField(err)}, zapFields...)...)
-		return nil, zaperr.Wrap(err, "error getting metadata from downloader", zapFields...)
+		svc.log.Error("error getting metadata from downloader", append([]any{slog.Any("error", err)}, logAttrs...)...)
+		return nil, fmt.Errorf("error getting metadata from downloader: %w", err)
 	}
 
 	if err := svc.storage.SaveMetadata(ctx, metadata); err != nil {
 		svc.log.Error(
 			"error saving metadata to storage, will continue",
-			append([]zap.Field{zaperr.ToField(err)}, zapFields...)...,
+			append([]any{slog.Any("error", err)}, logAttrs...)...,
 		)
 	}
 

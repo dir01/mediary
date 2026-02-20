@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"regexp"
@@ -13,17 +14,14 @@ import (
 
 	id3v2 "github.com/bogem/id3v2/v2"
 	"github.com/dir01/mediary/service"
-	"github.com/hori-ryota/zaperr"
-	"github.com/pkg/errors"
-	"go.uber.org/zap"
 )
 
-func NewFFMpegMediaProcessor(logger *zap.Logger) (service.MediaProcessor, error) {
+func NewFFMpegMediaProcessor(logger *slog.Logger) (service.MediaProcessor, error) {
 	return &FFMpegMediaProcessor{log: logger}, nil
 }
 
 type FFMpegMediaProcessor struct {
-	log *zap.Logger
+	log *slog.Logger
 }
 
 func (conv *FFMpegMediaProcessor) GetInfo(ctx context.Context, filepath string) (info *service.MediaInfo, err error) {
@@ -32,13 +30,13 @@ func (conv *FFMpegMediaProcessor) GetInfo(ctx context.Context, filepath string) 
 	if state, err := os.Stat(filepath); err == nil {
 		info.FileLenBytes = state.Size()
 	} else {
-		return nil, errors.Wrap(err, "failed to stat file")
+		return nil, fmt.Errorf("failed to stat file: %w", err)
 	}
 
 	if duration, err := conv.GetDuration(filepath); err == nil {
 		info.Duration = duration
 	} else {
-		return nil, errors.Wrap(err, "failed to get duration")
+		return nil, fmt.Errorf("failed to get duration: %w", err)
 	}
 
 	return info, nil
@@ -46,45 +44,45 @@ func (conv *FFMpegMediaProcessor) GetInfo(ctx context.Context, filepath string) 
 
 func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []string, audioCodec string) (string, error) {
 	ext := filepaths[0][strings.LastIndex(filepaths[0], "."):] // FIXME
-	zapFields := []zap.Field{
-		zap.String("ext", ext),
-		zap.String("audioCodec", audioCodec),
-		zap.Strings("filepaths", filepaths),
+	logAttrs := []any{
+		slog.String("ext", ext),
+		slog.String("audioCodec", audioCodec),
+		slog.Any("filepaths", filepaths),
 	}
 
 	file, err := os.CreateTemp("", "*"+ext)
 	if err != nil {
-		return "", zaperr.Wrap(err, "failed to create temp file", zapFields...)
+		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}
 	resultFilepath := file.Name()
-	zapFields = append(zapFields, zap.String("resultFilepath", resultFilepath))
+	logAttrs = append(logAttrs, slog.String("resultFilepath", resultFilepath))
 
 	args := []string{"-y", "-i", "concat:" + strings.Join(filepaths, "|"), "-acodec", audioCodec, resultFilepath}
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
-	zapFields = append(zapFields, zap.String("cmd", cmd.String()))
+	logAttrs = append(logAttrs, slog.String("cmd", cmd.String()))
 
-	conv.log.Debug("running ffmpeg", zapFields...)
+	conv.log.Debug("running ffmpeg", logAttrs...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", zaperr.Wrap(err, "failed to run ffmpeg", []zap.Field{zap.String("output", string(output))}...)
+		return "", fmt.Errorf("failed to run ffmpeg (output: %s): %w", string(output), err)
 	}
-	conv.log.Debug("ffmpeg finished successfully", zapFields...)
+	conv.log.Debug("ffmpeg finished successfully", logAttrs...)
 
 	return resultFilepath, nil
 }
 
 func (conv *FFMpegMediaProcessor) ExtractCoverArt(filepath string) (coverArtFilePath string, err error) {
-	zapFields := []zap.Field{zap.String("filepath", filepath)}
+	logAttrs := []any{slog.String("filepath", filepath)}
 	coverArtFilePath = filepath + ".jpg"
-	zapFields = append(zapFields, zap.String("coverArtFilePath", coverArtFilePath))
+	logAttrs = append(logAttrs, slog.String("coverArtFilePath", coverArtFilePath))
 
 	cmd := exec.Command("ffmpeg", "-i", filepath, "-map", "0:v", "-map", "-0:V", "-c", "copy", "-y", coverArtFilePath)
-	zapFields = append(zapFields, zap.String("cmd", cmd.String()))
+	logAttrs = append(logAttrs, slog.String("cmd", cmd.String()))
 
 	out, err := cmd.CombinedOutput()
-	zapFields = append(zapFields, zap.String("output", string(out)))
+	logAttrs = append(logAttrs, slog.String("output", string(out)))
 	if err != nil {
-		return "", zaperr.Wrap(err, "failed to run ffmpeg", zapFields...)
+		return "", fmt.Errorf("failed to run ffmpeg (output: %s): %w", string(out), err)
 	}
 
 	return coverArtFilePath, nil
@@ -92,45 +90,45 @@ func (conv *FFMpegMediaProcessor) ExtractCoverArt(filepath string) (coverArtFile
 
 func (conv *FFMpegMediaProcessor) GetDuration(filepath string) (time.Duration, error) {
 	cmd := exec.Command("ffmpeg", "-v", "quiet", "-stats", "-i", filepath, "-f", "null", "-")
-	zapFields := []zap.Field{zap.String("filepath", filepath), zap.String("cmd", cmd.String())}
+	logAttrs := []any{slog.String("filepath", filepath), slog.String("cmd", cmd.String())}
 
 	out, err := cmd.CombinedOutput()
-	zapFields = append(zapFields, zap.String("output", string(out)))
+	logAttrs = append(logAttrs, slog.String("output", string(out)))
 	if err != nil {
-		return 0, zaperr.Wrap(err, "failed to run ffmpeg", zapFields...)
+		return 0, fmt.Errorf("failed to run ffmpeg (output: %s): %w", string(out), err)
 	}
 
 	re := regexp.MustCompile(`(\d\d:\d\d:\d\d)`)
 	found := re.FindAll(out, -1)
 	if len(found) == 0 {
-		return 0, zaperr.Wrap(err, "failed to parse duration", zapFields...)
+		return 0, fmt.Errorf("failed to parse duration from output: %s", string(out))
 	}
 	lastFound := found[len(found)-1]
-	zapFields = append(zapFields, zap.String("lastFound", string(lastFound)))
+	logAttrs = append(logAttrs, slog.String("lastFound", string(lastFound)))
 	tsParts := strings.Split(string(lastFound), ":")
 
 	hours, err := strconv.Atoi(tsParts[0])
 	if err != nil {
-		return 0, zaperr.Wrap(err, "failed to parse hours", zapFields...)
+		return 0, fmt.Errorf("failed to parse hours: %w", err)
 	}
 	minutes, err := strconv.Atoi(tsParts[1])
 	if err != nil {
-		return 0, zaperr.Wrap(err, "failed to parse minutes", zapFields...)
+		return 0, fmt.Errorf("failed to parse minutes: %w", err)
 	}
 	seconds, err := strconv.Atoi(tsParts[2])
 	if err != nil {
-		return 0, zaperr.Wrap(err, "failed to parse seconds", zapFields...)
+		return 0, fmt.Errorf("failed to parse seconds: %w", err)
 	}
 
 	return time.Duration(seconds+60*minutes+60*60*hours) * time.Second, nil
 }
 
 func (conv *FFMpegMediaProcessor) AddChapterTags(_ context.Context, filepath string, chapters []service.Chapter) error {
-	zapFields := []zap.Field{zap.String("filepath", filepath), zap.Int("chapters", len(chapters))}
+	logAttrs := []any{slog.String("filepath", filepath), slog.Int("chapters", len(chapters))}
 
 	tag, err := id3v2.Open(filepath, id3v2.Options{Parse: false})
 	if err != nil {
-		return zaperr.Wrap(err, "failed to open file for ID3 tagging", zapFields...)
+		return fmt.Errorf("failed to open file for ID3 tagging: %w", err)
 	}
 	defer func() { _ = tag.Close() }()
 
@@ -164,9 +162,9 @@ func (conv *FFMpegMediaProcessor) AddChapterTags(_ context.Context, filepath str
 		ChildIDs:  childIDs,
 	})
 
-	conv.log.Debug("writing ID3 chapter tags", zapFields...)
+	conv.log.Debug("writing ID3 chapter tags", logAttrs...)
 	if err := tag.Save(); err != nil {
-		return zaperr.Wrap(err, "failed to save ID3 tags", zapFields...)
+		return fmt.Errorf("failed to save ID3 tags: %w", err)
 	}
 	return nil
 }
