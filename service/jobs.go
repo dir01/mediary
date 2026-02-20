@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/samber/oops"
 )
 
 var (
@@ -127,7 +129,7 @@ func (svc *Service) constructFlow(jobID string, jobState *Job) (func() error, er
 	case jobTypeUploadOriginal:
 		return svc.newUploadOriginalFlow(jobID, jobState)
 	default:
-		return nil, fmt.Errorf("unsupported job type %s: %w", jobState.Type, errUnsupportedJobType)
+		return nil, oops.With("jobType", jobState.Type).Wrapf(errUnsupportedJobType, "unsupported job type: %s", jobState.Type)
 	}
 }
 

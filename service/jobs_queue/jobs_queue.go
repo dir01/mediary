@@ -2,11 +2,11 @@ package jobsqueue
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/samber/oops"
 	work2 "github.com/taylorchu/work"
 )
 
@@ -46,11 +46,11 @@ func (r *RJQ) Shutdown() {
 func (r *RJQ) Publish(ctx context.Context, jobType string, payload any) error {
 	job := work2.NewJob()
 	if err := job.MarshalJSONPayload(payload); err != nil {
-		return fmt.Errorf("failed to marshal payload: %w", err)
+		return oops.Wrapf(err, "failed to marshal payload")
 	}
 
 	if err := r.work2Queue.Enqueue(job, &work2.EnqueueOptions{Namespace: r.namespace, QueueID: jobType}); err != nil {
-		return fmt.Errorf("failed to enqueue job: %w", err)
+		return oops.Wrapf(err, "failed to enqueue job")
 	}
 
 	return nil

@@ -2,9 +2,10 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/samber/oops"
 )
 
 func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func() error, error) {
@@ -12,6 +13,7 @@ func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func() error,
 		slog.String("jobID", jobID),
 		slog.Any("job", job),
 	}
+	errCtx := oops.With("jobID", jobID, "job", job)
 	type Params struct {
 		Variant   string `json:"variant"`
 		UploadURL string `json:"uploadUrl"`
@@ -19,13 +21,14 @@ func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func() error,
 	params := Params{}
 	err := mapToStruct(job.Params, &params)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse job params: %w", err)
+		return nil, errCtx.Wrapf(err, "failed to parse job params")
 	}
 	logAttrs = append(logAttrs, slog.Any("params", params))
+	errCtx = errCtx.With("params", params)
 	svc.log.Debug("parsed job params", logAttrs...)
 
 	if params.Variant == "" {
-		return nil, fmt.Errorf("no filepath provided")
+		return nil, errCtx.Errorf("no filepath provided")
 	}
 
 	return func() error {
@@ -33,7 +36,7 @@ func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func() error,
 		defer cancel()
 		job, err := svc.storage.GetJob(ctx, jobID)
 		if err != nil {
-			return fmt.Errorf("failed to get job: %w", err)
+			return errCtx.Wrapf(err, "failed to get job")
 		}
 
 		updateJobStatus := func(status string) {
@@ -55,17 +58,19 @@ func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func() error,
 		defer cancel()
 		filepathsMap, err := svc.downloader.Download(ctx, job.URL, []string{params.Variant})
 		if err != nil {
-			return fmt.Errorf("failed to download files: %w", err)
+			return errCtx.Wrapf(err, "failed to download files")
 		}
 		downloadedFilepath := filepathsMap[params.Variant]
 		logAttrs = append(logAttrs, slog.String("downloadedFilepath", downloadedFilepath))
+		errCtx = errCtx.With("downloadedFilepath", downloadedFilepath)
 		svc.log.Debug("downloaded file", logAttrs...)
 
 		info, err := svc.mediaProcessor.GetInfo(ctx, downloadedFilepath)
 		if err != nil {
-			return fmt.Errorf("failed to get info about result file: %w", err)
+			return errCtx.Wrapf(err, "failed to get info about result file")
 		}
 		logAttrs = append(logAttrs, slog.Any("info", info))
+		errCtx = errCtx.With("info", info)
 		svc.log.Debug("got info about result file", logAttrs...)
 		job.ResultMediaDuration = info.Duration
 		job.ResultFileBytes = info.FileLenBytes
@@ -76,7 +81,7 @@ func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func() error,
 		defer cancel()
 		err = svc.uploader.Upload(ctx, downloadedFilepath, params.UploadURL)
 		if err != nil {
-			return fmt.Errorf("failed to upload result: %w", err)
+			return errCtx.Wrapf(err, "failed to upload result")
 		}
 
 		updateJobStatus(JobStatusComplete)

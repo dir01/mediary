@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/samber/oops"
 
 	"github.com/dir01/mediary/service"
 )
@@ -122,7 +123,9 @@ func (y *YtdlpDownloader) runYTDLP(ctx context.Context, args ...string) (out []b
 
 	out, err = cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("failed to run yt-dlp (args: %v, output: %s, env: %v): %w", args, string(out), cmd.Env, err)
+		return nil, oops.
+			With("args", args, "combined_output", string(out), "env", cmd.Env).
+			Wrapf(err, "failed to run yt-dlp")
 	}
 
 	return out, nil

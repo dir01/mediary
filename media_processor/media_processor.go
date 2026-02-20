@@ -14,6 +14,7 @@ import (
 
 	id3v2 "github.com/bogem/id3v2/v2"
 	"github.com/dir01/mediary/service"
+	"github.com/samber/oops"
 )
 
 func NewFFMpegMediaProcessor(logger *slog.Logger) (service.MediaProcessor, error) {
@@ -44,6 +45,7 @@ func (conv *FFMpegMediaProcessor) GetInfo(ctx context.Context, filepath string) 
 
 func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []string, audioCodec string) (string, error) {
 	ext := filepaths[0][strings.LastIndex(filepaths[0], "."):] // FIXME
+	errCtx := oops.With("ext", ext, "audioCodec", audioCodec, "filepaths", filepaths)
 	logAttrs := []any{
 		slog.String("ext", ext),
 		slog.String("audioCodec", audioCodec),
@@ -52,19 +54,21 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 
 	file, err := os.CreateTemp("", "*"+ext)
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp file: %w", err)
+		return "", errCtx.Wrapf(err, "failed to create temp file")
 	}
 	resultFilepath := file.Name()
+	errCtx = errCtx.With("resultFilepath", resultFilepath)
 	logAttrs = append(logAttrs, slog.String("resultFilepath", resultFilepath))
 
 	args := []string{"-y", "-i", "concat:" + strings.Join(filepaths, "|"), "-acodec", audioCodec, resultFilepath}
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	errCtx = errCtx.With("cmd", cmd.String())
 	logAttrs = append(logAttrs, slog.String("cmd", cmd.String()))
 
 	conv.log.Debug("running ffmpeg", logAttrs...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("failed to run ffmpeg (output: %s): %w", string(output), err)
+		return "", errCtx.With("output", string(output)).Wrapf(err, "failed to run ffmpeg")
 	}
 	conv.log.Debug("ffmpeg finished successfully", logAttrs...)
 
@@ -72,17 +76,20 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 }
 
 func (conv *FFMpegMediaProcessor) ExtractCoverArt(filepath string) (coverArtFilePath string, err error) {
+	errCtx := oops.With("filepath", filepath)
 	logAttrs := []any{slog.String("filepath", filepath)}
 	coverArtFilePath = filepath + ".jpg"
+	errCtx = errCtx.With("coverArtFilePath", coverArtFilePath)
 	logAttrs = append(logAttrs, slog.String("coverArtFilePath", coverArtFilePath))
 
 	cmd := exec.Command("ffmpeg", "-i", filepath, "-map", "0:v", "-map", "-0:V", "-c", "copy", "-y", coverArtFilePath)
+	errCtx = errCtx.With("cmd", cmd.String())
 	logAttrs = append(logAttrs, slog.String("cmd", cmd.String()))
 
 	out, err := cmd.CombinedOutput()
 	logAttrs = append(logAttrs, slog.String("output", string(out)))
 	if err != nil {
-		return "", fmt.Errorf("failed to run ffmpeg (output: %s): %w", string(out), err)
+		return "", errCtx.With("output", string(out)).Wrapf(err, "failed to run ffmpeg")
 	}
 
 	return coverArtFilePath, nil
@@ -90,45 +97,49 @@ func (conv *FFMpegMediaProcessor) ExtractCoverArt(filepath string) (coverArtFile
 
 func (conv *FFMpegMediaProcessor) GetDuration(filepath string) (time.Duration, error) {
 	cmd := exec.Command("ffmpeg", "-v", "quiet", "-stats", "-i", filepath, "-f", "null", "-")
+	errCtx := oops.With("filepath", filepath, "cmd", cmd.String())
 	logAttrs := []any{slog.String("filepath", filepath), slog.String("cmd", cmd.String())}
 
 	out, err := cmd.CombinedOutput()
+	errCtx = errCtx.With("output", string(out))
 	logAttrs = append(logAttrs, slog.String("output", string(out)))
 	if err != nil {
-		return 0, fmt.Errorf("failed to run ffmpeg (output: %s): %w", string(out), err)
+		return 0, errCtx.Wrapf(err, "failed to run ffmpeg")
 	}
 
 	re := regexp.MustCompile(`(\d\d:\d\d:\d\d)`)
 	found := re.FindAll(out, -1)
 	if len(found) == 0 {
-		return 0, fmt.Errorf("failed to parse duration from output: %s", string(out))
+		return 0, errCtx.Errorf("failed to parse duration from output")
 	}
 	lastFound := found[len(found)-1]
+	errCtx = errCtx.With("lastFound", string(lastFound))
 	logAttrs = append(logAttrs, slog.String("lastFound", string(lastFound)))
 	tsParts := strings.Split(string(lastFound), ":")
 
 	hours, err := strconv.Atoi(tsParts[0])
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse hours: %w", err)
+		return 0, errCtx.Wrapf(err, "failed to parse hours")
 	}
 	minutes, err := strconv.Atoi(tsParts[1])
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse minutes: %w", err)
+		return 0, errCtx.Wrapf(err, "failed to parse minutes")
 	}
 	seconds, err := strconv.Atoi(tsParts[2])
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse seconds: %w", err)
+		return 0, errCtx.Wrapf(err, "failed to parse seconds")
 	}
 
 	return time.Duration(seconds+60*minutes+60*60*hours) * time.Second, nil
 }
 
 func (conv *FFMpegMediaProcessor) AddChapterTags(_ context.Context, filepath string, chapters []service.Chapter) error {
+	errCtx := oops.With("filepath", filepath, "chapters", len(chapters))
 	logAttrs := []any{slog.String("filepath", filepath), slog.Int("chapters", len(chapters))}
 
 	tag, err := id3v2.Open(filepath, id3v2.Options{Parse: false})
 	if err != nil {
-		return fmt.Errorf("failed to open file for ID3 tagging: %w", err)
+		return errCtx.Wrapf(err, "failed to open file for ID3 tagging")
 	}
 	defer func() { _ = tag.Close() }()
 
@@ -164,7 +175,7 @@ func (conv *FFMpegMediaProcessor) AddChapterTags(_ context.Context, filepath str
 
 	conv.log.Debug("writing ID3 chapter tags", logAttrs...)
 	if err := tag.Save(); err != nil {
-		return fmt.Errorf("failed to save ID3 tags: %w", err)
+		return errCtx.Wrapf(err, "failed to save ID3 tags")
 	}
 	return nil
 }

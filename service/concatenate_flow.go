@@ -2,15 +2,17 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/samber/oops"
 )
 
 func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, error) {
 	logAttrs := []any{slog.String("jobID", jobID), slog.Any("job", job)}
+	errCtx := oops.With("jobID", jobID, "job", job)
 	type Params struct {
 		Variants   []string `json:"variants"`
 		AudioCodec string   `json:"audioCodec"`
@@ -19,12 +21,13 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, er
 	params := Params{}
 	err := mapToStruct(job.Params, &params)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse job params: %w", err)
+		return nil, errCtx.Wrapf(err, "failed to parse job params")
 	}
 	if params.AudioCodec == "" {
 		params.AudioCodec = "copy"
 	}
 	logAttrs = append(logAttrs, slog.Any("params", params))
+	errCtx = errCtx.With("params", params)
 	svc.log.Debug("parsed job params", logAttrs...)
 
 	return func() error {
@@ -32,9 +35,10 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, er
 		defer cancel()
 		job, err := svc.storage.GetJob(ctx, jobID)
 		if err != nil {
-			return fmt.Errorf("failed to get job: %w", err)
+			return errCtx.Wrapf(err, "failed to get job")
 		}
 		logAttrs = append(logAttrs, slog.Any("job", job))
+		errCtx = errCtx.With("job", job)
 
 		updateJobStatus := func(status string) {
 			job.DisplayStatus = status
@@ -54,7 +58,7 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, er
 
 		filepathsMap, err := svc.downloader.Download(ctx, job.URL, params.Variants)
 		if err != nil {
-			return fmt.Errorf("failed to download variants: %w", err)
+			return errCtx.Wrapf(err, "failed to download variants")
 		}
 
 		var resultFilepath string
@@ -93,7 +97,7 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, er
 			defer cancel()
 			resultFilepath, err = svc.mediaProcessor.Concatenate(ctx, fsFilepaths, params.AudioCodec)
 			if err != nil {
-				return fmt.Errorf("failed to concatenate files: %w", err)
+				return errCtx.Wrapf(err, "failed to concatenate files")
 			}
 
 			// write ID3 chapter tags into the concatenated file
@@ -105,12 +109,14 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, er
 			}
 		}
 		logAttrs = append(logAttrs, slog.String("localFilename", resultFilepath))
+		errCtx = errCtx.With("localFilename", resultFilepath)
 
 		info, err := svc.mediaProcessor.GetInfo(ctx, resultFilepath)
 		if err != nil {
-			return fmt.Errorf("failed to get info about result file: %w", err)
+			return errCtx.Wrapf(err, "failed to get info about result file")
 		}
 		logAttrs = append(logAttrs, slog.Any("info", info))
+		errCtx = errCtx.With("info", info)
 		job.ResultMediaDuration = info.Duration
 		job.ResultFileBytes = info.FileLenBytes
 		//no need to save, as long as next line is status update // _ = svc.storage.SaveJob(ctx, job)
@@ -121,7 +127,7 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, er
 		defer cancel()
 		err = svc.uploader.Upload(ctx, resultFilepath, params.UploadURL)
 		if err != nil {
-			return fmt.Errorf("failed to upload result: %w", err)
+			return errCtx.Wrapf(err, "failed to upload result")
 		}
 
 		updateJobStatus(JobStatusComplete)

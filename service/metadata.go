@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/samber/oops"
 )
 
 var ErrUrlNotSupported = fmt.Errorf("url not supported")
@@ -45,6 +47,7 @@ func (svc *Service) GetMetadata(ctx context.Context, url string) (*Metadata, err
 
 func (svc *Service) doGetMetadata(ctx context.Context, url string) (*Metadata, error) {
 	logAttrs := []any{slog.String("url", url)}
+	errCtx := oops.With("url", url)
 	svc.log.Debug("getting metadata", logAttrs...)
 
 	if metadata, err := svc.storage.GetMetadata(ctx, url); err != nil {
@@ -58,14 +61,14 @@ func (svc *Service) doGetMetadata(ctx context.Context, url string) (*Metadata, e
 	}
 
 	if !svc.downloader.AcceptsURL(url) {
-		return nil, fmt.Errorf("failed to get metadata: %w", ErrUrlNotSupported)
+		return nil, errCtx.Wrapf(ErrUrlNotSupported, "failed to get metadata")
 	}
 
 	svc.log.Debug("fetching metadata from downloader", slog.String("url", url))
 	metadata, err := svc.downloader.GetMetadata(ctx, url)
 	if err != nil {
 		svc.log.Error("error getting metadata from downloader", append([]any{slog.Any("error", err)}, logAttrs...)...)
-		return nil, fmt.Errorf("error getting metadata from downloader: %w", err)
+		return nil, errCtx.Wrapf(err, "error getting metadata from downloader")
 	}
 
 	if err := svc.storage.SaveMetadata(ctx, metadata); err != nil {
