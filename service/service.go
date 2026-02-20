@@ -124,8 +124,7 @@ func (svc *Service) execSynced(key string, f func()) {
 		}()
 		svc.syncChansMap[key] = ch
 	}
+	ch <- f
 	svc.syncChansMapMutex.Unlock()
 	// endregion
-
-	ch <- f
 }

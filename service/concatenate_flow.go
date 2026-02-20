@@ -36,6 +36,8 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, er
 		zapFields = append(zapFields, zap.Any("job", job))
 
 		updateJobStatus := func(status string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			defer cancel()
 			job.DisplayStatus = status
 			if err = svc.storage.SaveJob(ctx, job); err != nil {
 				zapFields := append([]zap.Field{
