@@ -42,7 +42,16 @@ func (conv *FFMpegMediaProcessor) GetInfo(ctx context.Context, filepath string) 
 }
 
 func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []string, audioCodec string) (string, error) {
-	ext := filepaths[0][strings.LastIndex(filepaths[0], "."):] // FIXME
+	if len(filepaths) == 0 {
+		return "", errors.New("filepaths cannot be empty")
+	}
+
+	firstExtIndex := strings.LastIndex(filepaths[0], ".")
+	if firstExtIndex == -1 {
+		return "", errors.New("first filepath must include extension")
+	}
+
+	ext := filepaths[0][firstExtIndex:]
 	zapFields := []zap.Field{
 		zap.String("ext", ext),
 		zap.String("audioCodec", audioCodec),
