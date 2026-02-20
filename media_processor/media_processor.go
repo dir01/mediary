@@ -132,7 +132,7 @@ func (conv *FFMpegMediaProcessor) AddChapterTags(_ context.Context, filepath str
 	if err != nil {
 		return zaperr.Wrap(err, "failed to open file for ID3 tagging", zapFields...)
 	}
-	defer tag.Close()
+	defer func() { _ = tag.Close() }()
 
 	tag.SetVersion(3) // ID3v2.3 for broad player compatibility
 
