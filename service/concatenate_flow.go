@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
-	"github.com/hori-ryota/zaperr"
+	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/hori-ryota/zaperr"
 	"go.uber.org/zap"
 )
 
@@ -63,8 +65,28 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, er
 			updateJobStatus(JobStatusProcessing)
 			// translate requested variants into actual fs filepaths while preserving order
 			fsFilepaths := make([]string, 0, len(filepathsMap))
-			for _, filepath := range params.Variants {
-				fsFilepaths = append(fsFilepaths, filepathsMap[filepath])
+			for _, fp := range params.Variants {
+				fsFilepaths = append(fsFilepaths, filepathsMap[fp])
+			}
+
+			// collect per-file durations for chapter markers
+			var chapters []Chapter
+			var offset time.Duration
+			for i, variant := range params.Variants {
+				fileInfo, infoErr := svc.mediaProcessor.GetInfo(ctx, fsFilepaths[i])
+				if infoErr != nil {
+					svc.log.Warn("failed to get duration for chapter, skipping chapter tags",
+						append(zapFields, zaperr.ToField(infoErr), zap.String("variant", variant))...)
+					chapters = nil
+					break
+				}
+				name := strings.TrimSuffix(filepath.Base(variant), filepath.Ext(variant))
+				chapters = append(chapters, Chapter{
+					Title:     name,
+					StartTime: offset,
+					EndTime:   offset + fileInfo.Duration,
+				})
+				offset += fileInfo.Duration
 			}
 
 			svc.log.Debug("starting conversion", zapFields...)
@@ -73,6 +95,14 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, er
 			resultFilepath, err = svc.mediaProcessor.Concatenate(ctx, fsFilepaths, params.AudioCodec)
 			if err != nil {
 				return zaperr.Wrap(err, "failed to concatenate files", zapFields...)
+			}
+
+			// write ID3 chapter tags into the concatenated file
+			if len(chapters) > 0 {
+				if chapErr := svc.mediaProcessor.AddChapterTags(ctx, resultFilepath, chapters); chapErr != nil {
+					svc.log.Warn("failed to add chapter tags, proceeding without chapters",
+						append(zapFields, zaperr.ToField(chapErr))...)
+				}
 			}
 		}
 		zapFields = append(zapFields, zap.String("localFilename", resultFilepath))

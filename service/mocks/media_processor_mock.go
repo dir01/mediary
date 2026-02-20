@@ -17,6 +17,13 @@ type MediaProcessorMock struct {
 	t          minimock.Tester
 	finishOnce sync.Once
 
+	funcAddChapterTags          func(ctx context.Context, filepath string, chapters []mm_service.Chapter) (err error)
+	funcAddChapterTagsOrigin    string
+	inspectFuncAddChapterTags   func(ctx context.Context, filepath string, chapters []mm_service.Chapter)
+	afterAddChapterTagsCounter  uint64
+	beforeAddChapterTagsCounter uint64
+	AddChapterTagsMock          mMediaProcessorMockAddChapterTags
+
 	funcConcatenate          func(ctx context.Context, filepaths []string, audioCodec string) (resultFilepath string, err error)
 	funcConcatenateOrigin    string
 	inspectFuncConcatenate   func(ctx context.Context, filepaths []string, audioCodec string)
@@ -40,6 +47,9 @@ func NewMediaProcessorMock(t minimock.Tester) *MediaProcessorMock {
 		controller.RegisterMocker(m)
 	}
 
+	m.AddChapterTagsMock = mMediaProcessorMockAddChapterTags{mock: m}
+	m.AddChapterTagsMock.callArgs = []*MediaProcessorMockAddChapterTagsParams{}
+
 	m.ConcatenateMock = mMediaProcessorMockConcatenate{mock: m}
 	m.ConcatenateMock.callArgs = []*MediaProcessorMockConcatenateParams{}
 
@@ -49,6 +59,379 @@ func NewMediaProcessorMock(t minimock.Tester) *MediaProcessorMock {
 	t.Cleanup(m.MinimockFinish)
 
 	return m
+}
+
+type mMediaProcessorMockAddChapterTags struct {
+	optional           bool
+	mock               *MediaProcessorMock
+	defaultExpectation *MediaProcessorMockAddChapterTagsExpectation
+	expectations       []*MediaProcessorMockAddChapterTagsExpectation
+
+	callArgs []*MediaProcessorMockAddChapterTagsParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// MediaProcessorMockAddChapterTagsExpectation specifies expectation struct of the MediaProcessor.AddChapterTags
+type MediaProcessorMockAddChapterTagsExpectation struct {
+	mock               *MediaProcessorMock
+	params             *MediaProcessorMockAddChapterTagsParams
+	paramPtrs          *MediaProcessorMockAddChapterTagsParamPtrs
+	expectationOrigins MediaProcessorMockAddChapterTagsExpectationOrigins
+	results            *MediaProcessorMockAddChapterTagsResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// MediaProcessorMockAddChapterTagsParams contains parameters of the MediaProcessor.AddChapterTags
+type MediaProcessorMockAddChapterTagsParams struct {
+	ctx      context.Context
+	filepath string
+	chapters []mm_service.Chapter
+}
+
+// MediaProcessorMockAddChapterTagsParamPtrs contains pointers to parameters of the MediaProcessor.AddChapterTags
+type MediaProcessorMockAddChapterTagsParamPtrs struct {
+	ctx      *context.Context
+	filepath *string
+	chapters *[]mm_service.Chapter
+}
+
+// MediaProcessorMockAddChapterTagsResults contains results of the MediaProcessor.AddChapterTags
+type MediaProcessorMockAddChapterTagsResults struct {
+	err error
+}
+
+// MediaProcessorMockAddChapterTagsOrigins contains origins of expectations of the MediaProcessor.AddChapterTags
+type MediaProcessorMockAddChapterTagsExpectationOrigins struct {
+	origin         string
+	originCtx      string
+	originFilepath string
+	originChapters string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmAddChapterTags *mMediaProcessorMockAddChapterTags) Optional() *mMediaProcessorMockAddChapterTags {
+	mmAddChapterTags.optional = true
+	return mmAddChapterTags
+}
+
+// Expect sets up expected params for MediaProcessor.AddChapterTags
+func (mmAddChapterTags *mMediaProcessorMockAddChapterTags) Expect(ctx context.Context, filepath string, chapters []mm_service.Chapter) *mMediaProcessorMockAddChapterTags {
+	if mmAddChapterTags.mock.funcAddChapterTags != nil {
+		mmAddChapterTags.mock.t.Fatalf("MediaProcessorMock.AddChapterTags mock is already set by Set")
+	}
+
+	if mmAddChapterTags.defaultExpectation == nil {
+		mmAddChapterTags.defaultExpectation = &MediaProcessorMockAddChapterTagsExpectation{}
+	}
+
+	if mmAddChapterTags.defaultExpectation.paramPtrs != nil {
+		mmAddChapterTags.mock.t.Fatalf("MediaProcessorMock.AddChapterTags mock is already set by ExpectParams functions")
+	}
+
+	mmAddChapterTags.defaultExpectation.params = &MediaProcessorMockAddChapterTagsParams{ctx, filepath, chapters}
+	mmAddChapterTags.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmAddChapterTags.expectations {
+		if minimock.Equal(e.params, mmAddChapterTags.defaultExpectation.params) {
+			mmAddChapterTags.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmAddChapterTags.defaultExpectation.params)
+		}
+	}
+
+	return mmAddChapterTags
+}
+
+// ExpectCtxParam1 sets up expected param ctx for MediaProcessor.AddChapterTags
+func (mmAddChapterTags *mMediaProcessorMockAddChapterTags) ExpectCtxParam1(ctx context.Context) *mMediaProcessorMockAddChapterTags {
+	if mmAddChapterTags.mock.funcAddChapterTags != nil {
+		mmAddChapterTags.mock.t.Fatalf("MediaProcessorMock.AddChapterTags mock is already set by Set")
+	}
+
+	if mmAddChapterTags.defaultExpectation == nil {
+		mmAddChapterTags.defaultExpectation = &MediaProcessorMockAddChapterTagsExpectation{}
+	}
+
+	if mmAddChapterTags.defaultExpectation.params != nil {
+		mmAddChapterTags.mock.t.Fatalf("MediaProcessorMock.AddChapterTags mock is already set by Expect")
+	}
+
+	if mmAddChapterTags.defaultExpectation.paramPtrs == nil {
+		mmAddChapterTags.defaultExpectation.paramPtrs = &MediaProcessorMockAddChapterTagsParamPtrs{}
+	}
+	mmAddChapterTags.defaultExpectation.paramPtrs.ctx = &ctx
+	mmAddChapterTags.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmAddChapterTags
+}
+
+// ExpectFilepathParam2 sets up expected param filepath for MediaProcessor.AddChapterTags
+func (mmAddChapterTags *mMediaProcessorMockAddChapterTags) ExpectFilepathParam2(filepath string) *mMediaProcessorMockAddChapterTags {
+	if mmAddChapterTags.mock.funcAddChapterTags != nil {
+		mmAddChapterTags.mock.t.Fatalf("MediaProcessorMock.AddChapterTags mock is already set by Set")
+	}
+
+	if mmAddChapterTags.defaultExpectation == nil {
+		mmAddChapterTags.defaultExpectation = &MediaProcessorMockAddChapterTagsExpectation{}
+	}
+
+	if mmAddChapterTags.defaultExpectation.params != nil {
+		mmAddChapterTags.mock.t.Fatalf("MediaProcessorMock.AddChapterTags mock is already set by Expect")
+	}
+
+	if mmAddChapterTags.defaultExpectation.paramPtrs == nil {
+		mmAddChapterTags.defaultExpectation.paramPtrs = &MediaProcessorMockAddChapterTagsParamPtrs{}
+	}
+	mmAddChapterTags.defaultExpectation.paramPtrs.filepath = &filepath
+	mmAddChapterTags.defaultExpectation.expectationOrigins.originFilepath = minimock.CallerInfo(1)
+
+	return mmAddChapterTags
+}
+
+// ExpectChaptersParam3 sets up expected param chapters for MediaProcessor.AddChapterTags
+func (mmAddChapterTags *mMediaProcessorMockAddChapterTags) ExpectChaptersParam3(chapters []mm_service.Chapter) *mMediaProcessorMockAddChapterTags {
+	if mmAddChapterTags.mock.funcAddChapterTags != nil {
+		mmAddChapterTags.mock.t.Fatalf("MediaProcessorMock.AddChapterTags mock is already set by Set")
+	}
+
+	if mmAddChapterTags.defaultExpectation == nil {
+		mmAddChapterTags.defaultExpectation = &MediaProcessorMockAddChapterTagsExpectation{}
+	}
+
+	if mmAddChapterTags.defaultExpectation.params != nil {
+		mmAddChapterTags.mock.t.Fatalf("MediaProcessorMock.AddChapterTags mock is already set by Expect")
+	}
+
+	if mmAddChapterTags.defaultExpectation.paramPtrs == nil {
+		mmAddChapterTags.defaultExpectation.paramPtrs = &MediaProcessorMockAddChapterTagsParamPtrs{}
+	}
+	mmAddChapterTags.defaultExpectation.paramPtrs.chapters = &chapters
+	mmAddChapterTags.defaultExpectation.expectationOrigins.originChapters = minimock.CallerInfo(1)
+
+	return mmAddChapterTags
+}
+
+// Inspect accepts an inspector function that has same arguments as the MediaProcessor.AddChapterTags
+func (mmAddChapterTags *mMediaProcessorMockAddChapterTags) Inspect(f func(ctx context.Context, filepath string, chapters []mm_service.Chapter)) *mMediaProcessorMockAddChapterTags {
+	if mmAddChapterTags.mock.inspectFuncAddChapterTags != nil {
+		mmAddChapterTags.mock.t.Fatalf("Inspect function is already set for MediaProcessorMock.AddChapterTags")
+	}
+
+	mmAddChapterTags.mock.inspectFuncAddChapterTags = f
+
+	return mmAddChapterTags
+}
+
+// Return sets up results that will be returned by MediaProcessor.AddChapterTags
+func (mmAddChapterTags *mMediaProcessorMockAddChapterTags) Return(err error) *MediaProcessorMock {
+	if mmAddChapterTags.mock.funcAddChapterTags != nil {
+		mmAddChapterTags.mock.t.Fatalf("MediaProcessorMock.AddChapterTags mock is already set by Set")
+	}
+
+	if mmAddChapterTags.defaultExpectation == nil {
+		mmAddChapterTags.defaultExpectation = &MediaProcessorMockAddChapterTagsExpectation{mock: mmAddChapterTags.mock}
+	}
+	mmAddChapterTags.defaultExpectation.results = &MediaProcessorMockAddChapterTagsResults{err}
+	mmAddChapterTags.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmAddChapterTags.mock
+}
+
+// Set uses given function f to mock the MediaProcessor.AddChapterTags method
+func (mmAddChapterTags *mMediaProcessorMockAddChapterTags) Set(f func(ctx context.Context, filepath string, chapters []mm_service.Chapter) (err error)) *MediaProcessorMock {
+	if mmAddChapterTags.defaultExpectation != nil {
+		mmAddChapterTags.mock.t.Fatalf("Default expectation is already set for the MediaProcessor.AddChapterTags method")
+	}
+
+	if len(mmAddChapterTags.expectations) > 0 {
+		mmAddChapterTags.mock.t.Fatalf("Some expectations are already set for the MediaProcessor.AddChapterTags method")
+	}
+
+	mmAddChapterTags.mock.funcAddChapterTags = f
+	mmAddChapterTags.mock.funcAddChapterTagsOrigin = minimock.CallerInfo(1)
+	return mmAddChapterTags.mock
+}
+
+// When sets expectation for the MediaProcessor.AddChapterTags which will trigger the result defined by the following
+// Then helper
+func (mmAddChapterTags *mMediaProcessorMockAddChapterTags) When(ctx context.Context, filepath string, chapters []mm_service.Chapter) *MediaProcessorMockAddChapterTagsExpectation {
+	if mmAddChapterTags.mock.funcAddChapterTags != nil {
+		mmAddChapterTags.mock.t.Fatalf("MediaProcessorMock.AddChapterTags mock is already set by Set")
+	}
+
+	expectation := &MediaProcessorMockAddChapterTagsExpectation{
+		mock:               mmAddChapterTags.mock,
+		params:             &MediaProcessorMockAddChapterTagsParams{ctx, filepath, chapters},
+		expectationOrigins: MediaProcessorMockAddChapterTagsExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmAddChapterTags.expectations = append(mmAddChapterTags.expectations, expectation)
+	return expectation
+}
+
+// Then sets up MediaProcessor.AddChapterTags return parameters for the expectation previously defined by the When method
+func (e *MediaProcessorMockAddChapterTagsExpectation) Then(err error) *MediaProcessorMock {
+	e.results = &MediaProcessorMockAddChapterTagsResults{err}
+	return e.mock
+}
+
+// Times sets number of times MediaProcessor.AddChapterTags should be invoked
+func (mmAddChapterTags *mMediaProcessorMockAddChapterTags) Times(n uint64) *mMediaProcessorMockAddChapterTags {
+	if n == 0 {
+		mmAddChapterTags.mock.t.Fatalf("Times of MediaProcessorMock.AddChapterTags mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmAddChapterTags.expectedInvocations, n)
+	mmAddChapterTags.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmAddChapterTags
+}
+
+func (mmAddChapterTags *mMediaProcessorMockAddChapterTags) invocationsDone() bool {
+	if len(mmAddChapterTags.expectations) == 0 && mmAddChapterTags.defaultExpectation == nil && mmAddChapterTags.mock.funcAddChapterTags == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmAddChapterTags.mock.afterAddChapterTagsCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmAddChapterTags.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// AddChapterTags implements mm_service.MediaProcessor
+func (mmAddChapterTags *MediaProcessorMock) AddChapterTags(ctx context.Context, filepath string, chapters []mm_service.Chapter) (err error) {
+	mm_atomic.AddUint64(&mmAddChapterTags.beforeAddChapterTagsCounter, 1)
+	defer mm_atomic.AddUint64(&mmAddChapterTags.afterAddChapterTagsCounter, 1)
+
+	mmAddChapterTags.t.Helper()
+
+	if mmAddChapterTags.inspectFuncAddChapterTags != nil {
+		mmAddChapterTags.inspectFuncAddChapterTags(ctx, filepath, chapters)
+	}
+
+	mm_params := MediaProcessorMockAddChapterTagsParams{ctx, filepath, chapters}
+
+	// Record call args
+	mmAddChapterTags.AddChapterTagsMock.mutex.Lock()
+	mmAddChapterTags.AddChapterTagsMock.callArgs = append(mmAddChapterTags.AddChapterTagsMock.callArgs, &mm_params)
+	mmAddChapterTags.AddChapterTagsMock.mutex.Unlock()
+
+	for _, e := range mmAddChapterTags.AddChapterTagsMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.err
+		}
+	}
+
+	if mmAddChapterTags.AddChapterTagsMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmAddChapterTags.AddChapterTagsMock.defaultExpectation.Counter, 1)
+		mm_want := mmAddChapterTags.AddChapterTagsMock.defaultExpectation.params
+		mm_want_ptrs := mmAddChapterTags.AddChapterTagsMock.defaultExpectation.paramPtrs
+
+		mm_got := MediaProcessorMockAddChapterTagsParams{ctx, filepath, chapters}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmAddChapterTags.t.Errorf("MediaProcessorMock.AddChapterTags got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmAddChapterTags.AddChapterTagsMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.filepath != nil && !minimock.Equal(*mm_want_ptrs.filepath, mm_got.filepath) {
+				mmAddChapterTags.t.Errorf("MediaProcessorMock.AddChapterTags got unexpected parameter filepath, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmAddChapterTags.AddChapterTagsMock.defaultExpectation.expectationOrigins.originFilepath, *mm_want_ptrs.filepath, mm_got.filepath, minimock.Diff(*mm_want_ptrs.filepath, mm_got.filepath))
+			}
+
+			if mm_want_ptrs.chapters != nil && !minimock.Equal(*mm_want_ptrs.chapters, mm_got.chapters) {
+				mmAddChapterTags.t.Errorf("MediaProcessorMock.AddChapterTags got unexpected parameter chapters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmAddChapterTags.AddChapterTagsMock.defaultExpectation.expectationOrigins.originChapters, *mm_want_ptrs.chapters, mm_got.chapters, minimock.Diff(*mm_want_ptrs.chapters, mm_got.chapters))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmAddChapterTags.t.Errorf("MediaProcessorMock.AddChapterTags got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmAddChapterTags.AddChapterTagsMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmAddChapterTags.AddChapterTagsMock.defaultExpectation.results
+		if mm_results == nil {
+			mmAddChapterTags.t.Fatal("No results are set for the MediaProcessorMock.AddChapterTags")
+		}
+		return (*mm_results).err
+	}
+	if mmAddChapterTags.funcAddChapterTags != nil {
+		return mmAddChapterTags.funcAddChapterTags(ctx, filepath, chapters)
+	}
+	mmAddChapterTags.t.Fatalf("Unexpected call to MediaProcessorMock.AddChapterTags. %v %v %v", ctx, filepath, chapters)
+	return
+}
+
+// AddChapterTagsAfterCounter returns a count of finished MediaProcessorMock.AddChapterTags invocations
+func (mmAddChapterTags *MediaProcessorMock) AddChapterTagsAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmAddChapterTags.afterAddChapterTagsCounter)
+}
+
+// AddChapterTagsBeforeCounter returns a count of MediaProcessorMock.AddChapterTags invocations
+func (mmAddChapterTags *MediaProcessorMock) AddChapterTagsBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmAddChapterTags.beforeAddChapterTagsCounter)
+}
+
+// Calls returns a list of arguments used in each call to MediaProcessorMock.AddChapterTags.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmAddChapterTags *mMediaProcessorMockAddChapterTags) Calls() []*MediaProcessorMockAddChapterTagsParams {
+	mmAddChapterTags.mutex.RLock()
+
+	argCopy := make([]*MediaProcessorMockAddChapterTagsParams, len(mmAddChapterTags.callArgs))
+	copy(argCopy, mmAddChapterTags.callArgs)
+
+	mmAddChapterTags.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockAddChapterTagsDone returns true if the count of the AddChapterTags invocations corresponds
+// the number of defined expectations
+func (m *MediaProcessorMock) MinimockAddChapterTagsDone() bool {
+	if m.AddChapterTagsMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.AddChapterTagsMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.AddChapterTagsMock.invocationsDone()
+}
+
+// MinimockAddChapterTagsInspect logs each unmet expectation
+func (m *MediaProcessorMock) MinimockAddChapterTagsInspect() {
+	for _, e := range m.AddChapterTagsMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to MediaProcessorMock.AddChapterTags at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterAddChapterTagsCounter := mm_atomic.LoadUint64(&m.afterAddChapterTagsCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.AddChapterTagsMock.defaultExpectation != nil && afterAddChapterTagsCounter < 1 {
+		if m.AddChapterTagsMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to MediaProcessorMock.AddChapterTags at\n%s", m.AddChapterTagsMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to MediaProcessorMock.AddChapterTags at\n%s with params: %#v", m.AddChapterTagsMock.defaultExpectation.expectationOrigins.origin, *m.AddChapterTagsMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcAddChapterTags != nil && afterAddChapterTagsCounter < 1 {
+		m.t.Errorf("Expected call to MediaProcessorMock.AddChapterTags at\n%s", m.funcAddChapterTagsOrigin)
+	}
+
+	if !m.AddChapterTagsMock.invocationsDone() && afterAddChapterTagsCounter > 0 {
+		m.t.Errorf("Expected %d calls to MediaProcessorMock.AddChapterTags at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.AddChapterTagsMock.expectedInvocations), m.AddChapterTagsMock.expectedInvocationsOrigin, afterAddChapterTagsCounter)
+	}
 }
 
 type mMediaProcessorMockConcatenate struct {
@@ -772,6 +1155,8 @@ func (m *MediaProcessorMock) MinimockGetInfoInspect() {
 func (m *MediaProcessorMock) MinimockFinish() {
 	m.finishOnce.Do(func() {
 		if !m.minimockDone() {
+			m.MinimockAddChapterTagsInspect()
+
 			m.MinimockConcatenateInspect()
 
 			m.MinimockGetInfoInspect()
@@ -798,6 +1183,7 @@ func (m *MediaProcessorMock) MinimockWait(timeout mm_time.Duration) {
 func (m *MediaProcessorMock) minimockDone() bool {
 	done := true
 	return done &&
+		m.MinimockAddChapterTagsDone() &&
 		m.MinimockConcatenateDone() &&
 		m.MinimockGetInfoDone()
 }
