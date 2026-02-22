@@ -4,16 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/hori-ryota/zaperr"
+	"github.com/samber/oops"
 
 	"github.com/dir01/mediary/service"
-	"go.uber.org/zap"
 )
 
 var ErrNoAudioFormat = fmt.Errorf("could not find an audio format")
@@ -25,7 +25,7 @@ const (
 	formatTypeAudioLQ = "Audio (mp3), Low Quality"
 )
 
-func New(dataDir string, logger *zap.Logger) (*YtdlpDownloader, error) {
+func New(dataDir string, logger *slog.Logger) (*YtdlpDownloader, error) {
 	d := &YtdlpDownloader{dataDir: dataDir, log: logger}
 	var _ service.Downloader = d
 	return d, nil
@@ -34,7 +34,7 @@ func New(dataDir string, logger *zap.Logger) (*YtdlpDownloader, error) {
 type YtdlpDownloader struct {
 	// dataDir is a location for temporary storage of downloaded files
 	dataDir string
-	log     *zap.Logger
+	log     *slog.Logger
 }
 
 func (y *YtdlpDownloader) AcceptsURL(url string) bool {
@@ -43,7 +43,7 @@ func (y *YtdlpDownloader) AcceptsURL(url string) bool {
 
 	_, err := y.GetMetadata(ctx, url)
 	if err != nil {
-		y.log.Debug("yt-dlp get metadata", zap.Error(err))
+		y.log.Debug("yt-dlp get metadata", slog.Any("error", err))
 
 		return false
 	}
@@ -63,7 +63,7 @@ func (y *YtdlpDownloader) GetMetadata(ctx context.Context, url string) (*service
 		return nil, err
 	}
 
-	y.log.Debug("metadata unmarshal success", zap.String("url", url))
+	y.log.Debug("metadata unmarshal success", slog.String("url", url))
 
 	variants := []service.VariantMetadata{
 		{ID: formatTypeVideo},
@@ -116,20 +116,16 @@ func (y *YtdlpDownloader) Download(ctx context.Context, url string, filepaths []
 }
 
 func (y *YtdlpDownloader) runYTDLP(ctx context.Context, args ...string) (out []byte, err error) {
-	y.log.Debug("running yt-dlp", zap.Strings("args", args))
+	y.log.Debug("running yt-dlp", slog.Any("args", args))
 
 	cmd := exec.CommandContext(ctx, "yt-dlp", args...)
 	cmd.Env = append(cmd.Env, "PATH="+os.Getenv("PATH"))
 
 	out, err = cmd.CombinedOutput()
 	if err != nil {
-		return nil, zaperr.Wrap(
-			err,
-			"failed to run yt-dlp",
-			zap.Strings("args", args),
-			zap.String("combined_output", string(out)),
-			zap.Strings("env", cmd.Env),
-		)
+		return nil, oops.
+			With("args", args, "combined_output", string(out), "env", cmd.Env).
+			Wrapf(err, "failed to run yt-dlp")
 	}
 
 	return out, nil

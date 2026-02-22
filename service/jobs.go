@@ -6,10 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
-	"github.com/hori-ryota/zaperr"
-	"go.uber.org/zap"
+	"github.com/samber/oops"
 )
 
 var (
@@ -47,11 +47,11 @@ const JobStatusComplete = "complete"
 func (svc *Service) CreateJob(ctx context.Context, params *JobParams) (*Job, error) {
 	jobID := svc.calculateJobId(params)
 
-	zapFields := []zap.Field{
-		zap.String("jobID", jobID),
-		zap.Any("params", params),
+	logAttrs := []any{
+		slog.String("jobID", jobID),
+		slog.Any("params", params),
 	}
-	svc.log.Debug("started CreateJob", zapFields...)
+	svc.log.Debug("started CreateJob", logAttrs...)
 
 	jobState := &Job{
 		JobParams:     *params,
@@ -66,21 +66,21 @@ func (svc *Service) CreateJob(ctx context.Context, params *JobParams) (*Job, err
 
 	// disallow duplicate jobs
 	if existingState, err := svc.storage.GetJob(ctx, jobID); err != nil {
-		svc.log.Error("failed to get job state", zaperr.ToField(err))
+		svc.log.Error("failed to get job state", slog.Any("error", err))
 		return nil, fmt.Errorf("failed to get existing job state: %w", err)
 	} else if existingState != nil {
-		svc.log.Debug("job already exists", zap.String("jobID", jobID))
+		svc.log.Debug("job already exists", slog.String("jobID", jobID))
 		return existingState, errJobAlreadyExists
 	}
 
 	if err := svc.storage.SaveJob(ctx, jobState); err != nil {
-		svc.log.Error("failed to save job state", zap.String("jobID", jobID), zaperr.ToField(err))
+		svc.log.Error("failed to save job state", slog.String("jobID", jobID), slog.Any("error", err))
 		return nil, err
 	}
 
-	svc.log.Debug("publishing job", zap.String("jobID", jobID))
+	svc.log.Debug("publishing job", slog.String("jobID", jobID))
 	if err := svc.jobsQueue.Publish(ctx, "process", jobState.ID); err != nil {
-		svc.log.Debug("failed to publish job", zap.String("jobID", jobID), zaperr.ToField(err))
+		svc.log.Debug("failed to publish job", slog.String("jobID", jobID), slog.Any("error", err))
 		return nil, err
 	}
 
@@ -98,22 +98,22 @@ func (svc *Service) onPublishedJob(payload []byte) error {
 	if err := json.Unmarshal(payload, &jobID); err != nil {
 		return fmt.Errorf("failed to unmarshal job id: %w", err)
 	}
-	svc.log.Debug("started onPublishedJob", zap.String("jobID", jobID))
+	svc.log.Debug("started onPublishedJob", slog.String("jobID", jobID))
 
 	jobState, err := svc.storage.GetJob(context.Background(), jobID)
 	if err != nil {
-		svc.log.Error("failed to get job state", zap.String("jobID", jobID), zaperr.ToField(err))
+		svc.log.Error("failed to get job state", slog.String("jobID", jobID), slog.Any("error", err))
 		return fmt.Errorf("failed to get job state: %w", err)
 	}
 
 	flow, err := svc.constructFlow(jobID, jobState)
 	if err != nil {
-		svc.log.Debug("failed to construct flow", zap.String("jobID", jobID), zaperr.ToField(err))
+		svc.log.Debug("failed to construct flow", slog.String("jobID", jobID), slog.Any("error", err))
 		return fmt.Errorf("failed to construct flow: %w", err)
 	}
 
 	if err := flow(); err != nil {
-		svc.log.Error("failed to execute flow", zap.String("jobID", jobID), zaperr.ToField(err))
+		svc.log.Error("failed to execute flow", slog.String("jobID", jobID), slog.Any("error", err))
 		return fmt.Errorf("failed to execute flow: %w", err)
 	}
 
@@ -129,11 +129,7 @@ func (svc *Service) constructFlow(jobID string, jobState *Job) (func() error, er
 	case jobTypeUploadOriginal:
 		return svc.newUploadOriginalFlow(jobID, jobState)
 	default:
-		return nil, zaperr.Wrap(
-			errUnsupportedJobType,
-			"unsupported job type: "+jobState.Type,
-			zap.String("jobType", jobState.Type),
-		)
+		return nil, oops.With("jobType", jobState.Type).Wrapf(errUnsupportedJobType, "unsupported job type: %s", jobState.Type)
 	}
 }
 

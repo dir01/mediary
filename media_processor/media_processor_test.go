@@ -2,17 +2,20 @@ package media_processor
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"os"
 	"testing"
 	"time"
 
 	id3v2 "github.com/bogem/id3v2/v2"
 	"github.com/dir01/mediary/service"
-	"go.uber.org/zap"
 )
 
+var testLogger = slog.New(slog.NewTextHandler(io.Discard, nil))
+
 func TestConcatenate_EmptyFilepathsReturnsError(t *testing.T) {
-	processor := &FFMpegMediaProcessor{log: zap.NewNop()}
+	processor := &FFMpegMediaProcessor{log: testLogger}
 
 	_, err := processor.Concatenate(context.Background(), nil, "aac")
 	if err == nil {
@@ -21,7 +24,7 @@ func TestConcatenate_EmptyFilepathsReturnsError(t *testing.T) {
 }
 
 func TestConcatenate_FirstFilepathWithoutExtensionReturnsError(t *testing.T) {
-	processor := &FFMpegMediaProcessor{log: zap.NewNop()}
+	processor := &FFMpegMediaProcessor{log: testLogger}
 
 	_, err := processor.Concatenate(context.Background(), []string{"/tmp/audio"}, "aac")
 	if err == nil {
@@ -92,7 +95,7 @@ func TestAddChapterTags_MultipleChapters(t *testing.T) {
 		{Title: "Chapter 2", StartTime: 15 * time.Minute, EndTime: 30 * time.Minute},
 	}
 
-	processor := &FFMpegMediaProcessor{log: zap.NewNop()}
+	processor := &FFMpegMediaProcessor{log: testLogger}
 	if err := processor.AddChapterTags(context.Background(), filepath, chapters); err != nil {
 		t.Fatalf("AddChapterTags failed: %v", err)
 	}
@@ -142,7 +145,7 @@ func TestAddChapterTags_FileWithoutExistingTag(t *testing.T) {
 		{Title: "Chapter 2", StartTime: 3 * time.Minute, EndTime: 5 * time.Minute},
 	}
 
-	processor := &FFMpegMediaProcessor{log: zap.NewNop()}
+	processor := &FFMpegMediaProcessor{log: testLogger}
 	if err := processor.AddChapterTags(context.Background(), filepath, chapters); err != nil {
 		t.Fatalf("AddChapterTags failed: %v", err)
 	}
