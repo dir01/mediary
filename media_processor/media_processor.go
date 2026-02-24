@@ -112,7 +112,7 @@ func (conv *FFMpegMediaProcessor) GetDuration(filepath string) (time.Duration, e
 	re := regexp.MustCompile(`(\d\d:\d\d:\d\d)`)
 	found := re.FindAll(out, -1)
 	if len(found) == 0 {
-		return 0, zaperr.Wrap(err, "failed to parse duration", zapFields...)
+		return 0, zaperr.New("failed to parse duration from ffmpeg output", zapFields...)
 	}
 	lastFound := found[len(found)-1]
 	zapFields = append(zapFields, zap.String("lastFound", string(lastFound)))
