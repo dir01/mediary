@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -100,38 +99,28 @@ func (conv *FFMpegMediaProcessor) ExtractCoverArt(filepath string) (coverArtFile
 }
 
 func (conv *FFMpegMediaProcessor) GetDuration(filepath string) (time.Duration, error) {
-	cmd := exec.Command("ffmpeg", "-v", "quiet", "-stats", "-i", filepath, "-f", "null", "-")
+	cmd := exec.Command(
+		"ffprobe",
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		filepath,
+	)
 	zapFields := []zap.Field{zap.String("filepath", filepath), zap.String("cmd", cmd.String())}
 
 	out, err := cmd.CombinedOutput()
 	zapFields = append(zapFields, zap.String("output", string(out)))
 	if err != nil {
-		return 0, zaperr.Wrap(err, "failed to run ffmpeg", zapFields...)
+		return 0, zaperr.Wrap(err, "failed to run ffprobe", zapFields...)
 	}
 
-	re := regexp.MustCompile(`(\d\d:\d\d:\d\d)`)
-	found := re.FindAll(out, -1)
-	if len(found) == 0 {
-		return 0, zaperr.Wrap(err, "failed to parse duration", zapFields...)
-	}
-	lastFound := found[len(found)-1]
-	zapFields = append(zapFields, zap.String("lastFound", string(lastFound)))
-	tsParts := strings.Split(string(lastFound), ":")
-
-	hours, err := strconv.Atoi(tsParts[0])
+	secondsStr := strings.TrimSpace(string(out))
+	seconds, err := strconv.ParseFloat(secondsStr, 64)
 	if err != nil {
-		return 0, zaperr.Wrap(err, "failed to parse hours", zapFields...)
-	}
-	minutes, err := strconv.Atoi(tsParts[1])
-	if err != nil {
-		return 0, zaperr.Wrap(err, "failed to parse minutes", zapFields...)
-	}
-	seconds, err := strconv.Atoi(tsParts[2])
-	if err != nil {
-		return 0, zaperr.Wrap(err, "failed to parse seconds", zapFields...)
+		return 0, zaperr.Wrap(err, "failed to parse duration from ffprobe output", zapFields...)
 	}
 
-	return time.Duration(seconds+60*minutes+60*60*hours) * time.Second, nil
+	return time.Duration(seconds * float64(time.Second)), nil
 }
 
 func (conv *FFMpegMediaProcessor) AddChapterTags(_ context.Context, filepath string, chapters []service.Chapter) error {
