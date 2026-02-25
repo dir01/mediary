@@ -2,16 +2,17 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/hori-ryota/zaperr"
-	"go.uber.org/zap"
+	"github.com/samber/oops"
 )
 
 func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, error) {
-	zapFields := []zap.Field{zap.String("jobID", jobID), zap.Any("job", job)}
+	logAttrs := []any{slog.String("jobID", jobID), slog.Any("job", job)}
+	errCtx := oops.With("jobID", jobID, "job", job)
 	type Params struct {
 		Variants   []string `json:"variants"`
 		AudioCodec string   `json:"audioCodec"`
@@ -20,42 +21,44 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, er
 	params := Params{}
 	err := mapToStruct(job.Params, &params)
 	if err != nil {
-		return nil, zaperr.Wrap(err, "failed to parse job params to %T: %w", zapFields...)
+		return nil, errCtx.Wrapf(err, "failed to parse job params")
 	}
 	if params.AudioCodec == "" {
 		params.AudioCodec = "copy"
 	}
-	zapFields = append(zapFields, zap.Any("params", params))
-	svc.log.Debug("parsed job params", zapFields...)
+	logAttrs = append(logAttrs, slog.Any("params", params))
+	errCtx = errCtx.With("params", params)
+	svc.log.Debug("parsed job params", logAttrs...)
 
 	return func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		defer cancel()
 		job, err := svc.storage.GetJob(ctx, jobID)
 		if err != nil {
-			return zaperr.Wrap(err, "failed to get job: %w", zapFields...)
+			return errCtx.Wrapf(err, "failed to get job")
 		}
-		zapFields = append(zapFields, zap.Any("job", job))
+		logAttrs = append(logAttrs, slog.Any("job", job))
+		errCtx = errCtx.With("job", job)
 
 		updateJobStatus := func(status string) {
 			job.DisplayStatus = status
 			if err = svc.storage.SaveJob(ctx, job); err != nil {
-				zapFields := append([]zap.Field{
-					zaperr.ToField(err),
-					zap.String("state", job.DisplayStatus),
-				}, zapFields...)
-				svc.log.Error("failed to save job state, proceeding", zapFields...)
+				attrs := append([]any{
+					slog.Any("error", err),
+					slog.String("state", job.DisplayStatus),
+				}, logAttrs...)
+				svc.log.Error("failed to save job state, proceeding", attrs...)
 			}
 		}
 
 		updateJobStatus(JobStatusDownloading)
-		svc.log.Debug("starting download", zapFields...)
+		svc.log.Debug("starting download", logAttrs...)
 		ctx, cancel = context.WithTimeout(context.Background(), 1*time.Hour)
 		defer cancel()
 
 		filepathsMap, err := svc.downloader.Download(ctx, job.URL, params.Variants)
 		if err != nil {
-			return zaperr.Wrap(err, "failed to download variants", zapFields...)
+			return errCtx.Wrapf(err, "failed to download variants")
 		}
 
 		var resultFilepath string
@@ -76,7 +79,7 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, er
 				fileInfo, infoErr := svc.mediaProcessor.GetInfo(ctx, fsFilepaths[i])
 				if infoErr != nil {
 					svc.log.Warn("failed to get duration for chapter, skipping chapter tags",
-						append(zapFields, zaperr.ToField(infoErr), zap.String("variant", variant))...)
+						append(logAttrs, slog.Any("error", infoErr), slog.String("variant", variant))...)
 					chapters = nil
 					break
 				}
@@ -89,44 +92,46 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, er
 				offset += fileInfo.Duration
 			}
 
-			svc.log.Debug("starting conversion", zapFields...)
+			svc.log.Debug("starting conversion", logAttrs...)
 			ctx, cancel = context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
 			resultFilepath, err = svc.mediaProcessor.Concatenate(ctx, fsFilepaths, params.AudioCodec)
 			if err != nil {
-				return zaperr.Wrap(err, "failed to concatenate files", zapFields...)
+				return errCtx.Wrapf(err, "failed to concatenate files")
 			}
 
 			// write ID3 chapter tags into the concatenated file
 			if len(chapters) > 0 {
 				if chapErr := svc.mediaProcessor.AddChapterTags(ctx, resultFilepath, chapters); chapErr != nil {
 					svc.log.Warn("failed to add chapter tags, proceeding without chapters",
-						append(zapFields, zaperr.ToField(chapErr))...)
+						append(logAttrs, slog.Any("error", chapErr))...)
 				}
 			}
 		}
-		zapFields = append(zapFields, zap.String("localFilename", resultFilepath))
+		logAttrs = append(logAttrs, slog.String("localFilename", resultFilepath))
+		errCtx = errCtx.With("localFilename", resultFilepath)
 
 		info, err := svc.mediaProcessor.GetInfo(ctx, resultFilepath)
 		if err != nil {
-			return zaperr.Wrap(err, "failed to get info about result file", zapFields...)
+			return errCtx.Wrapf(err, "failed to get info about result file")
 		}
-		zapFields = append(zapFields, zap.Any("info", info))
+		logAttrs = append(logAttrs, slog.Any("info", info))
+		errCtx = errCtx.With("info", info)
 		job.ResultMediaDuration = info.Duration
 		job.ResultFileBytes = info.FileLenBytes
 		//no need to save, as long as next line is status update // _ = svc.storage.SaveJob(ctx, job)
 
 		updateJobStatus(JobStatusUploading)
-		svc.log.Debug("starting upload", zapFields...)
+		svc.log.Debug("starting upload", logAttrs...)
 		ctx, cancel = context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 		err = svc.uploader.Upload(ctx, resultFilepath, params.UploadURL)
 		if err != nil {
-			return zaperr.Wrap(err, "failed to upload result", zapFields...)
+			return errCtx.Wrapf(err, "failed to upload result")
 		}
 
 		updateJobStatus(JobStatusComplete)
-		svc.log.Debug("job complete", zapFields...)
+		svc.log.Debug("job complete", logAttrs...)
 		return nil
 	}, nil
 }

@@ -2,17 +2,18 @@ package service
 
 import (
 	"context"
-	"github.com/hori-ryota/zaperr"
+	"log/slog"
 	"time"
 
-	"go.uber.org/zap"
+	"github.com/samber/oops"
 )
 
 func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func() error, error) {
-	zapFields := []zap.Field{
-		zap.String("jobID", jobID),
-		zap.Any("job", job),
+	logAttrs := []any{
+		slog.String("jobID", jobID),
+		slog.Any("job", job),
 	}
+	errCtx := oops.With("jobID", jobID, "job", job)
 	type Params struct {
 		Variant   string `json:"variant"`
 		UploadURL string `json:"uploadUrl"`
@@ -20,13 +21,14 @@ func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func() error,
 	params := Params{}
 	err := mapToStruct(job.Params, &params)
 	if err != nil {
-		return nil, zaperr.Wrap(err, "failed to parse job params", zapFields...)
+		return nil, errCtx.Wrapf(err, "failed to parse job params")
 	}
-	zapFields = append(zapFields, zap.Any("params", params))
-	svc.log.Debug("parsed job params", zapFields...)
+	logAttrs = append(logAttrs, slog.Any("params", params))
+	errCtx = errCtx.With("params", params)
+	svc.log.Debug("parsed job params", logAttrs...)
 
 	if params.Variant == "" {
-		return nil, zaperr.New("no filepath provided", zapFields...)
+		return nil, errCtx.Errorf("no filepath provided")
 	}
 
 	return func() error {
@@ -34,7 +36,7 @@ func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func() error,
 		defer cancel()
 		job, err := svc.storage.GetJob(ctx, jobID)
 		if err != nil {
-			return zaperr.Wrap(err, "failed to get job", zapFields...)
+			return errCtx.Wrapf(err, "failed to get job")
 		}
 
 		updateJobStatus := func(status string) {
@@ -42,46 +44,48 @@ func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func() error,
 			defer cancel()
 			job.DisplayStatus = status
 			if err = svc.storage.SaveJob(ctx, job); err != nil {
-				zapFields := append([]zap.Field{
-					zap.String("state", job.DisplayStatus),
-					zaperr.ToField(err),
-				}, zapFields...)
-				svc.log.Error("failed to save job state, proceeding", zapFields...)
+				attrs := append([]any{
+					slog.String("state", job.DisplayStatus),
+					slog.Any("error", err),
+				}, logAttrs...)
+				svc.log.Error("failed to save job state, proceeding", attrs...)
 			}
 		}
 
 		updateJobStatus(JobStatusDownloading)
-		svc.log.Debug("starting download", zapFields...)
+		svc.log.Debug("starting download", logAttrs...)
 		ctx, cancel = context.WithTimeout(context.Background(), 1*time.Hour)
 		defer cancel()
 		filepathsMap, err := svc.downloader.Download(ctx, job.URL, []string{params.Variant})
 		if err != nil {
-			return zaperr.Wrap(err, "failed to download files", zapFields...)
+			return errCtx.Wrapf(err, "failed to download files")
 		}
 		downloadedFilepath := filepathsMap[params.Variant]
-		zapFields = append(zapFields, zap.String("downloadedFilepath", downloadedFilepath))
-		svc.log.Debug("downloaded file", zapFields...)
+		logAttrs = append(logAttrs, slog.String("downloadedFilepath", downloadedFilepath))
+		errCtx = errCtx.With("downloadedFilepath", downloadedFilepath)
+		svc.log.Debug("downloaded file", logAttrs...)
 
 		info, err := svc.mediaProcessor.GetInfo(ctx, downloadedFilepath)
 		if err != nil {
-			return zaperr.Wrap(err, "failed to get info about result file: %w", zapFields...)
+			return errCtx.Wrapf(err, "failed to get info about result file")
 		}
-		zapFields = append(zapFields, zap.Any("info", info))
-		svc.log.Debug("got info about result file", zapFields...)
+		logAttrs = append(logAttrs, slog.Any("info", info))
+		errCtx = errCtx.With("info", info)
+		svc.log.Debug("got info about result file", logAttrs...)
 		job.ResultMediaDuration = info.Duration
 		job.ResultFileBytes = info.FileLenBytes
 
 		updateJobStatus(JobStatusUploading)
-		svc.log.Debug("starting upload", zapFields...)
+		svc.log.Debug("starting upload", logAttrs...)
 		ctx, cancel = context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 		err = svc.uploader.Upload(ctx, downloadedFilepath, params.UploadURL)
 		if err != nil {
-			return zaperr.Wrap(err, "failed to upload result", zapFields...)
+			return errCtx.Wrapf(err, "failed to upload result")
 		}
 
 		updateJobStatus(JobStatusComplete)
-		svc.log.Debug("job complete", zapFields...)
+		svc.log.Debug("job complete", logAttrs...)
 		return nil
 	}, nil
 }

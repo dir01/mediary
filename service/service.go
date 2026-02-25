@@ -2,10 +2,9 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 func NewService(
@@ -14,7 +13,7 @@ func NewService(
 	jobsQueue JobsQueue,
 	mediaProcessor MediaProcessor,
 	uploader Uploader,
-	logger *zap.Logger,
+	logger *slog.Logger,
 ) *Service {
 	svc := &Service{
 		downloader:     downloader,
@@ -43,7 +42,7 @@ type Service struct {
 	jobsQueue      JobsQueue
 	mediaProcessor MediaProcessor
 	uploader       Uploader
-	log            *zap.Logger
+	log            *slog.Logger
 
 	// syncChansMap is used to synchronize the execution of the same task.
 	// Map key is the task key.

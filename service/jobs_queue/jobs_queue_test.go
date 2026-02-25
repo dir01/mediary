@@ -5,16 +5,17 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"github.com/redis/go-redis/v9"
+	"log/slog"
+	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/dir01/mediary/tests"
-	"go.uber.org/zap"
+	"github.com/redis/go-redis/v9"
 )
 
-var logger, _ = zap.NewDevelopment()
+var logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 func TestRedisJobsQueue(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)

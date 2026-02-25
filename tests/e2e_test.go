@@ -7,7 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/redis/go-redis/v9"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -26,10 +26,10 @@ import (
 	jobsqueue "github.com/dir01/mediary/service/jobs_queue"
 	"github.com/dir01/mediary/storage"
 	"github.com/dir01/mediary/uploader"
-	"go.uber.org/zap"
+	"github.com/redis/go-redis/v9"
 )
 
-var logger, _ = zap.NewDevelopment()
+var logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 const (
 	magnetURL      = "magnet:?xt=urn:btih:FB0B49D5E3E18E29868C680D2F7BC00D67987D56&tr=http%3A%2F%2Fbt.t-ru.org"
@@ -100,7 +100,7 @@ func TestApplication(t *testing.T) {
 		expectedResponse := `{"status": "accepted"}`
 		docs.InsertText(`### '''/metadata''' - Timeouts
 
-By default, the endpoint will time out pretty quickly, 
+By default, the endpoint will time out pretty quickly,
 probably sooner than it takes to fetch metadata of a torrent, for example.
 
 In such cases, the endpoint will return a '''202 Accepted''' status code and a message '''%s'''
@@ -188,7 +188,7 @@ Video, Audio, different qualities, etc.
 This will allow you to choose the format you want to download later in the same UI as for torrent files.
 
 Since it does not make sense to concatenate different versions of the same video,
-response also will have ''''"allow_multiple_files": false'''. 
+response also will have ''''"allow_multiple_files": false'''.
 Take this into account while presenting format options to user`)
 
 		docs.PerformRequestForDocs("GET",
@@ -216,10 +216,10 @@ Take this into account while presenting format options to user`)
 	})
 
 	t.Run("job creation and status", func(t *testing.T) {
-		docs.InsertText(`### '''/jobs''' 
+		docs.InsertText(`### '''/jobs'''
 
 POST to '''/jobs''' will schedule for background execution a process of downloading, converting/processing and uploading the media.
-Only required parameters are '''url''' and '''type'''. '''type''' signifies the type of operation to be performed. 
+Only required parameters are '''url''' and '''type'''. '''type''' signifies the type of operation to be performed.
 Each operation can require some additional parameters, passed as '''params'''. For example, '''concatenate''' job
 requires a list of files to be concatenated and, optionally, an '''audioCodec''' to be used for the output file.`)
 

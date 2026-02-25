@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -16,10 +17,8 @@ import (
 	jobsqueue "github.com/dir01/mediary/service/jobs_queue"
 	"github.com/dir01/mediary/storage"
 	"github.com/dir01/mediary/uploader"
-	"github.com/hori-ryota/zaperr"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
-	"go.uber.org/zap"
 )
 
 func main() {
@@ -44,28 +43,23 @@ func main() {
 	}
 	// endregion
 
-	var logger *zap.Logger
-	var loggerErr error
+	var logger *slog.Logger
 	if isDebug {
-		logger, loggerErr = zap.NewDevelopment()
+		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	} else {
-		logger, loggerErr = zap.NewProduction()
+		logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	}
-	if loggerErr != nil {
-		log.Fatalf("error creating logger: %v", loggerErr)
-	}
-	defer func() { _ = logger.Sync() }()
 
 	// torrentDownloader downloads torrents
 	torrentDownloader, err := torrent.New(os.TempDir(), logger, false)
 	if err != nil {
-		logger.Fatal("error creating torrent downloader", zap.Error(err))
+		log.Fatalf("error creating torrent downloader: %v", err)
 	}
 
 	// ytdlDownloader downloads YouTube videos (potentially - everything that https://github.com/yt-dlp/yt-dlp  supports)
 	ytdlDownloader, err := ytdlp.New(os.TempDir(), logger)
 	if err != nil {
-		logger.Fatal("error creating ytdl downloader", zap.Error(err))
+		log.Fatalf("error creating ytdl downloader: %v", err)
 	}
 
 	// dwn is a composite downloader: it can download anything, as long as one of its minions knows how to
@@ -74,13 +68,13 @@ func main() {
 	mkRedisClient := func(url string) (client *redis.Client, teardown func()) {
 		opt, err := redis.ParseURL(url)
 		if err != nil {
-			logger.Fatal("error parsing redis url", zap.Error(err))
+			log.Fatalf("error parsing redis url: %v", err)
 		}
 		redisClient := redis.NewClient(opt)
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		if _, err := redisClient.Ping(ctx).Result(); err != nil {
-			logger.Fatal("error connecting to redis", zaperr.ToField(err))
+			log.Fatalf("error connecting to redis: %v", err)
 		}
 		return redisClient, func() { _ = redisClient.Close() }
 	}
