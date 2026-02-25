@@ -80,12 +80,6 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func() error, er
 					chapters = nil
 					break
 				}
-				if fileInfo.Duration <= 0 {
-					svc.log.Warn("zero or negative duration for chapter, skipping chapter tags",
-						append(zapFields, zap.Duration("duration", fileInfo.Duration), zap.String("variant", variant))...)
-					chapters = nil
-					break
-				}
 				name := strings.TrimSuffix(filepath.Base(variant), filepath.Ext(variant))
 				chapters = append(chapters, Chapter{
 					Title:     name,

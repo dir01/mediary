@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -11,12 +12,12 @@ import (
 	"github.com/gojuno/minimock/v3"
 )
 
-// TestConcatenateFlow_ZeroDurationSkipsChapters verifies that when GetInfo
-// returns Duration=0, chapter tags are skipped instead of being written with
-// all-zero timestamps. This was caused by a bug in GetDuration where
-// zaperr.Wrap(nil, ...) silently returned nil instead of an error, leading
-// to Duration=0 propagating without any error signal.
-func TestConcatenateFlow_ZeroDurationSkipsChapters(t *testing.T) {
+// TestConcatenateFlow_GetInfoErrorSkipsChapters verifies that when GetInfo
+// returns an error for any file, chapter tags are skipped but concatenation
+// still succeeds. Before the fix, GetDuration used zaperr.Wrap(nil, ...)
+// which silently returned (0, nil), causing chapters with all-zero timestamps.
+// Now GetDuration uses ffprobe and properly reports errors.
+func TestConcatenateFlow_GetInfoErrorSkipsChapters(t *testing.T) {
 	mc := minimock.NewController(t)
 
 	storage := mocks.NewStorageMock(mc)
@@ -36,7 +37,7 @@ func TestConcatenateFlow_ZeroDurationSkipsChapters(t *testing.T) {
 	svc.Start()
 	defer svc.Stop()
 
-	jobID := "test-job-zero-dur"
+	jobID := "test-job-info-err"
 	job := &service.Job{
 		JobParams: service.JobParams{
 			URL:  "http://example.com/audio",
@@ -68,18 +69,24 @@ func TestConcatenateFlow_ZeroDurationSkipsChapters(t *testing.T) {
 	})
 
 	resultPath := "/tmp/result/output.mp3"
+	getInfoCalls := 0
 
-	// GetInfo returns Duration=0 with no error. Before the fix, this
-	// caused chapters with all-zero timestamps to be written.
+	// GetInfo fails on the second file (simulates ffprobe parse error).
+	// The first call (for individual file) returns an error;
+	// the last call (for the concatenated result) must succeed.
 	mp.GetInfoMock.Set(func(_ context.Context, fp string) (*service.MediaInfo, error) {
-		return &service.MediaInfo{Duration: 0, FileLenBytes: 1024}, nil
+		getInfoCalls++
+		if fp == resultPath {
+			return &service.MediaInfo{Duration: 270 * time.Second, FileLenBytes: 3072}, nil
+		}
+		return nil, errors.New("ffprobe: failed to parse duration")
 	})
 
 	mp.ConcatenateMock.Set(func(_ context.Context, fps []string, codec string) (string, error) {
 		return resultPath, nil
 	})
 
-	// AddChapterTags should NOT be called when durations are zero.
+	// AddChapterTags should NOT be called when GetInfo fails.
 	addChapterTagsCalled := false
 	mp.AddChapterTagsMock.Optional().Set(func(_ context.Context, fp string, chapters []service.Chapter) error {
 		addChapterTagsCalled = true
@@ -96,7 +103,7 @@ func TestConcatenateFlow_ZeroDurationSkipsChapters(t *testing.T) {
 	}
 
 	if addChapterTagsCalled {
-		t.Error("AddChapterTags should not be called when file durations are zero")
+		t.Error("AddChapterTags should not be called when GetInfo fails")
 	}
 }
 
