@@ -42,11 +42,11 @@ func createTestMP3WithTag(t *testing.T) string {
 	}
 	// Write some dummy audio bytes
 	if _, err := tmp.Write(make([]byte, 512)); err != nil {
-		os.Remove(tmp.Name())
+		_ = os.Remove(tmp.Name())
 		t.Fatalf("failed to write dummy audio: %v", err)
 	}
-	tmp.Close()
-	t.Cleanup(func() { os.Remove(tmp.Name()) })
+	_ = tmp.Close()
+	t.Cleanup(func() { _ = os.Remove(tmp.Name()) })
 
 	// Write a minimal ID3v2 tag so the file has one before our test runs.
 	tag, err := id3v2.Open(tmp.Name(), id3v2.Options{Parse: false})
@@ -75,11 +75,11 @@ func createTestMP3WithoutTag(t *testing.T) string {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 	if _, err := tmp.Write(make([]byte, 512)); err != nil {
-		os.Remove(tmp.Name())
+		_ = os.Remove(tmp.Name())
 		t.Fatalf("failed to write dummy audio: %v", err)
 	}
-	tmp.Close()
-	t.Cleanup(func() { os.Remove(tmp.Name()) })
+	_ = tmp.Close()
+	t.Cleanup(func() { _ = os.Remove(tmp.Name()) })
 	return tmp.Name()
 }
 
@@ -102,7 +102,7 @@ func TestAddChapterTags_MultipleChapters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open tagged file: %v", err)
 	}
-	defer tag.Close()
+	defer func() { _ = tag.Close() }()
 
 	frames := tag.GetFrames("CHAP")
 	if len(frames) != len(chapters) {
@@ -152,7 +152,7 @@ func TestAddChapterTags_FileWithoutExistingTag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open tagged file: %v", err)
 	}
-	defer tag.Close()
+	defer func() { _ = tag.Close() }()
 
 	frames := tag.GetFrames("CHAP")
 	if len(frames) != len(chapters) {
