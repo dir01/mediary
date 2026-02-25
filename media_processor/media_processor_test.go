@@ -2,7 +2,6 @@ package media_processor
 
 import (
 	"context"
-	"io"
 	"os"
 	"testing"
 	"time"
@@ -30,62 +29,54 @@ func TestConcatenate_FirstFilepathWithoutExtensionReturnsError(t *testing.T) {
 	}
 }
 
-func copyTestMP3(t *testing.T) string {
+// createTestMP3WithTag creates a temp file containing a minimal ID3v2 tag
+// followed by dummy audio bytes. This simulates a real MP3 with an existing tag.
+func createTestMP3WithTag(t *testing.T) string {
 	t.Helper()
-	src, err := os.Open("/root/go/pkg/mod/github.com/bogem/id3v2/v2@v2.1.4/testdata/test.mp3")
-	if err != nil {
-		t.Fatalf("failed to open test mp3: %v", err)
-	}
-	defer src.Close()
 
+	// Start with dummy audio bytes (the id3v2 library treats everything
+	// after the tag as opaque data, so actual MP3 validity doesn't matter).
 	tmp, err := os.CreateTemp("", "chapter_test_*.mp3")
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
-	if _, err := io.Copy(tmp, src); err != nil {
+	// Write some dummy audio bytes
+	if _, err := tmp.Write(make([]byte, 512)); err != nil {
 		os.Remove(tmp.Name())
-		t.Fatalf("failed to copy test mp3: %v", err)
+		t.Fatalf("failed to write dummy audio: %v", err)
 	}
 	tmp.Close()
 	t.Cleanup(func() { os.Remove(tmp.Name()) })
+
+	// Write a minimal ID3v2 tag so the file has one before our test runs.
+	tag, err := id3v2.Open(tmp.Name(), id3v2.Options{Parse: false})
+	if err != nil {
+		t.Fatalf("failed to open file for tagging: %v", err)
+	}
+	tag.SetVersion(4)
+	tag.SetArtist("test")
+	if err := tag.Save(); err != nil {
+		t.Fatalf("failed to save seed tag: %v", err)
+	}
+	if err := tag.Close(); err != nil {
+		t.Fatalf("failed to close tag: %v", err)
+	}
+
 	return tmp.Name()
 }
 
-// copyTestMP3WithoutTag creates a copy of the test MP3 file with the ID3v2 tag
-// stripped, simulating the output of ffmpeg concat (which typically has no tag).
-func copyTestMP3WithoutTag(t *testing.T) string {
+// createTestMP3WithoutTag creates a temp file containing only dummy audio
+// bytes (no ID3 tag), simulating the typical output of ffmpeg concat.
+func createTestMP3WithoutTag(t *testing.T) string {
 	t.Helper()
-	src, err := os.Open("/root/go/pkg/mod/github.com/bogem/id3v2/v2@v2.1.4/testdata/test.mp3")
-	if err != nil {
-		t.Fatalf("failed to open test mp3: %v", err)
-	}
-	defer src.Close()
-
-	// Read the ID3v2 header to find the tag size
-	header := make([]byte, 10)
-	if _, err := io.ReadFull(src, header); err != nil {
-		t.Fatalf("failed to read header: %v", err)
-	}
-	if string(header[:3]) != "ID3" {
-		t.Fatal("test file does not have ID3 header")
-	}
-	// Synchsafe size from bytes 6-9
-	var tagSize int64
-	for _, b := range header[6:10] {
-		tagSize = (tagSize << 7) | int64(b&0x7F)
-	}
-	// Skip past the tag (header + body)
-	if _, err := src.Seek(10+tagSize, io.SeekStart); err != nil {
-		t.Fatalf("failed to seek past tag: %v", err)
-	}
 
 	tmp, err := os.CreateTemp("", "chapter_notag_*.mp3")
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
-	if _, err := io.Copy(tmp, src); err != nil {
+	if _, err := tmp.Write(make([]byte, 512)); err != nil {
 		os.Remove(tmp.Name())
-		t.Fatalf("failed to copy audio data: %v", err)
+		t.Fatalf("failed to write dummy audio: %v", err)
 	}
 	tmp.Close()
 	t.Cleanup(func() { os.Remove(tmp.Name()) })
@@ -93,7 +84,7 @@ func copyTestMP3WithoutTag(t *testing.T) string {
 }
 
 func TestAddChapterTags_MultipleChapters(t *testing.T) {
-	filepath := copyTestMP3(t)
+	filepath := createTestMP3WithTag(t)
 
 	chapters := []service.Chapter{
 		{Title: "Intro", StartTime: 0, EndTime: 5 * time.Minute},
@@ -143,7 +134,7 @@ func TestAddChapterTags_MultipleChapters(t *testing.T) {
 // written correctly to a file that has no pre-existing ID3 tag, which is
 // the typical case for ffmpeg-concatenated output.
 func TestAddChapterTags_FileWithoutExistingTag(t *testing.T) {
-	filepath := copyTestMP3WithoutTag(t)
+	filepath := createTestMP3WithoutTag(t)
 
 	chapters := []service.Chapter{
 		{Title: "Intro", StartTime: 0, EndTime: 1 * time.Minute},
