@@ -7,13 +7,23 @@ services:
       - "DEBUG=1"
       - "BIND_ADDR=0.0.0.0:9999"
       - "REDIS_URL=redis://redis:6379"
+      - "OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318"
+      - "OTEL_SERVICE_NAME=mediary"
     ports:
       - "127.0.0.1:9999:9999"
     depends_on:
       - redis
+      - jaeger
 
   redis:
     image: redis:alpine
     ports:
       - "6379:6379"
 
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "127.0.0.1:16686:16686"   # Jaeger UI
+      - "4318:4318"               # OTLP HTTP receiver

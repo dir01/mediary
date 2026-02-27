@@ -2,9 +2,13 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 )
 
 func NewService(
@@ -15,6 +19,30 @@ func NewService(
 	uploader Uploader,
 	logger *slog.Logger,
 ) *Service {
+	meter := otel.Meter("github.com/dir01/mediary/service")
+
+	jobsCreated, err := meter.Int64Counter("mediary.jobs.created",
+		metric.WithDescription("Total number of jobs created"),
+	)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create mediary.jobs.created counter: %v", err))
+	}
+
+	jobsCompleted, err := meter.Int64Counter("mediary.jobs.completed",
+		metric.WithDescription("Total number of jobs completed"),
+	)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create mediary.jobs.completed counter: %v", err))
+	}
+
+	jobDuration, err := meter.Float64Histogram("mediary.jobs.duration_seconds",
+		metric.WithDescription("Duration of job execution in seconds"),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create mediary.jobs.duration_seconds histogram: %v", err))
+	}
+
 	svc := &Service{
 		downloader:     downloader,
 		storage:        storage,
@@ -23,6 +51,9 @@ func NewService(
 		uploader:       uploader,
 		log:            logger,
 		syncChansMap:   make(map[string]chan func()),
+		jobsCreated:    jobsCreated,
+		jobsCompleted:  jobsCompleted,
+		jobDuration:    jobDuration,
 	}
 	return svc
 }
@@ -51,6 +82,11 @@ type Service struct {
 
 	// syncChansMapMutex is used to synchronize access to syncChansMap.
 	syncChansMapMutex sync.Mutex
+
+	// OTel metric instruments
+	jobsCreated   metric.Int64Counter
+	jobsCompleted metric.Int64Counter
+	jobDuration   metric.Float64Histogram
 }
 
 //go:generate  go tool github.com/gojuno/minimock/v3/cmd/minimock -i Downloader -o ./mocks/downloader_mock.go -g

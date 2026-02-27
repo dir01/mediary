@@ -6,9 +6,13 @@ import (
 	"time"
 
 	"github.com/samber/oops"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
-func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func() error, error) {
+func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func(ctx context.Context) error, error) {
 	logAttrs := []any{
 		slog.String("jobID", jobID),
 		slog.Any("job", job),
@@ -31,19 +35,29 @@ func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func() error,
 		return nil, errCtx.Errorf("no filepath provided")
 	}
 
-	return func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	return func(jobCtx context.Context) error {
+		jobCtx, span := otel.Tracer("github.com/dir01/mediary/service").Start(jobCtx, "service.UploadOriginalFlow",
+			trace.WithAttributes(
+				attribute.String("job.id", jobID),
+				attribute.String("variant", params.Variant),
+			),
+		)
+		defer span.End()
+
+		ctx, cancel := context.WithTimeout(jobCtx, 1*time.Second)
 		defer cancel()
 		job, err := svc.storage.GetJob(ctx, jobID)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 			return errCtx.Wrapf(err, "failed to get job")
 		}
 
 		updateJobStatus := func(status string) {
-			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-			defer cancel()
+			statusCtx, statusCancel := context.WithTimeout(jobCtx, 1*time.Second)
+			defer statusCancel()
 			job.DisplayStatus = status
-			if err = svc.storage.SaveJob(ctx, job); err != nil {
+			if err = svc.storage.SaveJob(statusCtx, job); err != nil {
 				attrs := append([]any{
 					slog.String("state", job.DisplayStatus),
 					slog.Any("error", err),
@@ -54,19 +68,35 @@ func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func() error,
 
 		updateJobStatus(JobStatusDownloading)
 		svc.log.Debug("starting download", logAttrs...)
-		ctx, cancel = context.WithTimeout(context.Background(), 1*time.Hour)
-		defer cancel()
-		filepathsMap, err := svc.downloader.Download(ctx, job.URL, []string{params.Variant})
+
+		downloadCtx, downloadCancel := context.WithTimeout(jobCtx, 1*time.Hour)
+		defer downloadCancel()
+
+		downloadCtx, downloadSpan := otel.Tracer("github.com/dir01/mediary/service").Start(downloadCtx, "service.Download",
+			trace.WithAttributes(
+				attribute.String("job.id", jobID),
+				attribute.String("url", job.URL),
+				attribute.String("variant", params.Variant),
+			),
+		)
+		filepathsMap, err := svc.downloader.Download(downloadCtx, job.URL, []string{params.Variant})
 		if err != nil {
+			downloadSpan.RecordError(err)
+			downloadSpan.SetStatus(codes.Error, err.Error())
+			downloadSpan.End()
 			return errCtx.Wrapf(err, "failed to download files")
 		}
+		downloadSpan.End()
+
 		downloadedFilepath := filepathsMap[params.Variant]
 		logAttrs = append(logAttrs, slog.String("downloadedFilepath", downloadedFilepath))
 		errCtx = errCtx.With("downloadedFilepath", downloadedFilepath)
 		svc.log.Debug("downloaded file", logAttrs...)
 
-		info, err := svc.mediaProcessor.GetInfo(ctx, downloadedFilepath)
+		info, err := svc.mediaProcessor.GetInfo(downloadCtx, downloadedFilepath)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 			return errCtx.Wrapf(err, "failed to get info about result file")
 		}
 		logAttrs = append(logAttrs, slog.Any("info", info))
@@ -74,13 +104,21 @@ func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func() error,
 		svc.log.Debug("got info about result file", logAttrs...)
 		job.ResultMediaDuration = info.Duration
 		job.ResultFileBytes = info.FileLenBytes
+		span.SetAttributes(
+			attribute.Int64("result.bytes", info.FileLenBytes),
+			attribute.Float64("result.duration_seconds", info.Duration.Seconds()),
+		)
 
 		updateJobStatus(JobStatusUploading)
 		svc.log.Debug("starting upload", logAttrs...)
-		ctx, cancel = context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
-		err = svc.uploader.Upload(ctx, downloadedFilepath, params.UploadURL)
+
+		uploadCtx, uploadCancel := context.WithTimeout(jobCtx, 30*time.Minute)
+		defer uploadCancel()
+
+		err = svc.uploader.Upload(uploadCtx, downloadedFilepath, params.UploadURL)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 			return errCtx.Wrapf(err, "failed to upload result")
 		}
 

@@ -1,6 +1,7 @@
-build: prebuild
+build:
 	@echo "+ $@"
 	go build -o bin/server ./cmd/server
+.PHONY: build
 
 run:
 	@echo "+ $@"
@@ -12,13 +13,12 @@ test:
 	go test -v -failfast -race ./... -coverprofile=coverage.out
 .PHONY: test
 
-prebuild:
+tidy:
 	@echo "+ $@"
 	go mod tidy
-	go mod vendor
-.PHONY: prebuild
+.PHONY: tidy
 
-precommit: prebuild lint test
+precommit: tidy build lint test
 .PHONY: precommit
 
 lint:

@@ -13,6 +13,7 @@ import (
 	"github.com/dir01/mediary/downloader/ytdlp"
 	mediary_http "github.com/dir01/mediary/http"
 	"github.com/dir01/mediary/media_processor"
+	"github.com/dir01/mediary/otelsetup"
 	"github.com/dir01/mediary/service"
 	jobsqueue "github.com/dir01/mediary/service/jobs_queue"
 	"github.com/dir01/mediary/storage"
@@ -43,12 +44,30 @@ func main() {
 	}
 	// endregion
 
-	var logger *slog.Logger
+	var stderrHandler slog.Handler
 	if isDebug {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		stderrHandler = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})
 	} else {
-		logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
+		stderrHandler = slog.NewJSONHandler(os.Stderr, nil)
 	}
+
+	otelShutdown, err := otelsetup.Setup(context.Background(), "mediary")
+	if err != nil {
+		log.Fatalf("failed to setup opentelemetry: %v", err)
+	}
+	defer func() {
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := otelShutdown(shutCtx); err != nil {
+			log.Printf("error shutting down opentelemetry: %v", err)
+		}
+	}()
+
+	var logHandler slog.Handler = stderrHandler
+	if os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "" {
+		logHandler = otelsetup.NewMultiHandler(stderrHandler, otelsetup.NewOTelSlogHandler("mediary"))
+	}
+	logger := slog.New(logHandler)
 
 	// torrentDownloader downloads torrents
 	torrentDownloader, err := torrent.New(os.TempDir(), logger, false)
@@ -109,10 +128,10 @@ func main() {
 	svc.Start()
 	defer svc.Stop()
 
-	mux := mediary_http.PrepareHTTPServerMux(svc)
+	handler := mediary_http.PrepareHTTPServerMux(svc)
 
 	log.Printf("Starting to listen on %s", bindAddr)
-	log.Println(http.ListenAndServe(bindAddr, mux))
+	log.Println(http.ListenAndServe(bindAddr, handler))
 }
 
 func mustGetEnv(key string) string {

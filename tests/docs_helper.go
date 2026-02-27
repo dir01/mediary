@@ -10,12 +10,12 @@ import (
 	"testing"
 )
 
-func NewDocsHelper(t *testing.T, mux *http.ServeMux, readmeLocation, blockStartMarker, blockEndMarker string) *docsHelper {
+func NewDocsHelper(t *testing.T, mux http.Handler, readmeLocation, blockStartMarker, blockEndMarker string) *docsHelper {
 	return &docsHelper{t: t, mux: mux, readmeLocation: readmeLocation, blockStartMarker: blockStartMarker, blockEndMarker: blockEndMarker}
 }
 
 type docsHelper struct {
-	mux              *http.ServeMux
+	mux              http.Handler
 	t                *testing.T
 	readmeLocation   string
 	blockStartMarker string

@@ -4,19 +4,29 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/dir01/mediary/service"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
-func PrepareHTTPServerMux(service *service.Service) *http.ServeMux {
+func PrepareHTTPServerMux(service *service.Service) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metadata", handleGetMetadata(service, 100*time.Millisecond))
 	mux.HandleFunc("/metadata/long-polling", handleGetMetadata(service, 5*time.Minute))
 	mux.HandleFunc("/jobs/", handleGetJob(service))
 	mux.HandleFunc("/jobs", handleCreateJob(service))
 	mux.HandleFunc("/", handleDocs())
-	return mux
+	return otelhttp.NewHandler(mux, "mediary",
+		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+			path := r.URL.Path
+			if strings.HasPrefix(path, "/jobs/") && len(path) > len("/jobs/") {
+				path = "/jobs/:id"
+			}
+			return r.Method + " " + path
+		}),
+	)
 }
 
 func respond(w http.ResponseWriter, code int, payload interface{}) {

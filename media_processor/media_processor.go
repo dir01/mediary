@@ -14,6 +14,10 @@ import (
 	id3v2 "github.com/bogem/id3v2/v2"
 	"github.com/dir01/mediary/service"
 	"github.com/samber/oops"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func NewFFMpegMediaProcessor(logger *slog.Logger) (service.MediaProcessor, error) {
@@ -25,24 +29,45 @@ type FFMpegMediaProcessor struct {
 }
 
 func (conv *FFMpegMediaProcessor) GetInfo(ctx context.Context, filepath string) (info *service.MediaInfo, err error) {
+	ctx, span := otel.Tracer("github.com/dir01/mediary/media_processor").Start(ctx, "media_processor.GetInfo",
+		trace.WithAttributes(attribute.String("filepath", filepath)),
+	)
+	defer span.End()
+
 	info = &service.MediaInfo{}
 
 	if state, err := os.Stat(filepath); err == nil {
 		info.FileLenBytes = state.Size()
 	} else {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("failed to stat file: %w", err)
 	}
 
 	if duration, err := conv.GetDuration(filepath); err == nil {
 		info.Duration = duration
 	} else {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("failed to get duration: %w", err)
 	}
 
+	span.SetAttributes(
+		attribute.Int64("file.bytes", info.FileLenBytes),
+		attribute.Float64("media.duration_seconds", info.Duration.Seconds()),
+	)
 	return info, nil
 }
 
 func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []string, audioCodec string) (string, error) {
+	ctx, span := otel.Tracer("github.com/dir01/mediary/media_processor").Start(ctx, "media_processor.Concatenate",
+		trace.WithAttributes(
+			attribute.Int("files.count", len(filepaths)),
+			attribute.String("audio_codec", audioCodec),
+		),
+	)
+	defer span.End()
+
 	if len(filepaths) == 0 {
 		return "", fmt.Errorf("filepaths cannot be empty")
 	}
@@ -62,11 +87,14 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 
 	file, err := os.CreateTemp("", "*"+ext)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return "", errCtx.Wrapf(err, "failed to create temp file")
 	}
 	resultFilepath := file.Name()
 	errCtx = errCtx.With("resultFilepath", resultFilepath)
 	logAttrs = append(logAttrs, slog.String("resultFilepath", resultFilepath))
+	span.SetAttributes(attribute.String("result.filepath", resultFilepath))
 
 	args := []string{"-y", "-i", "concat:" + strings.Join(filepaths, "|"), "-acodec", audioCodec, resultFilepath}
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
@@ -76,6 +104,8 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 	conv.log.Debug("running ffmpeg", logAttrs...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return "", errCtx.With("output", string(output)).Wrapf(err, "failed to run ffmpeg")
 	}
 	conv.log.Debug("ffmpeg finished successfully", logAttrs...)
@@ -124,7 +154,15 @@ func (conv *FFMpegMediaProcessor) GetDuration(filepath string) (time.Duration, e
 	return time.Duration(seconds * float64(time.Second)), nil
 }
 
-func (conv *FFMpegMediaProcessor) AddChapterTags(_ context.Context, filepath string, chapters []service.Chapter) error {
+func (conv *FFMpegMediaProcessor) AddChapterTags(ctx context.Context, filepath string, chapters []service.Chapter) error {
+	_, span := otel.Tracer("github.com/dir01/mediary/media_processor").Start(ctx, "media_processor.AddChapterTags",
+		trace.WithAttributes(
+			attribute.String("filepath", filepath),
+			attribute.Int("chapters.count", len(chapters)),
+		),
+	)
+	defer span.End()
+
 	errCtx := oops.With("filepath", filepath, "chapters", len(chapters))
 	logAttrs := []any{slog.String("filepath", filepath), slog.Int("chapters", len(chapters))}
 
@@ -166,6 +204,8 @@ func (conv *FFMpegMediaProcessor) AddChapterTags(_ context.Context, filepath str
 
 	conv.log.Debug("writing ID3 chapter tags", logAttrs...)
 	if err := tag.Save(); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return errCtx.Wrapf(err, "failed to save ID3 tags")
 	}
 	return nil
