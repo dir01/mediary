@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"log/slog"
 	"net/http"
@@ -19,18 +20,16 @@ import (
 	"github.com/dir01/mediary/storage"
 	"github.com/dir01/mediary/uploader"
 	"github.com/joho/godotenv"
-	"github.com/redis/go-redis/v9"
+	_ "modernc.org/sqlite"
 )
 
 func main() {
 	_ = godotenv.Load()
 
 	// region env vars
-	redisURL := mustGetEnv("REDIS_URL")
-
-	bgRedisURL := os.Getenv("REDIS_URL_BG_JOBS")
-	if bgRedisURL == "" {
-		bgRedisURL = redisURL
+	sqliteDBPath := os.Getenv("SQLITE_DB_PATH")
+	if sqliteDBPath == "" {
+		sqliteDBPath = "./mediary.db"
 	}
 
 	bindAddr := "0.0.0.0:8080"
@@ -63,7 +62,7 @@ func main() {
 		}
 	}()
 
-	var logHandler slog.Handler = stderrHandler
+	logHandler := stderrHandler
 	if os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "" {
 		logHandler = otelsetup.NewMultiHandler(stderrHandler, otelsetup.NewOTelSlogHandler("mediary"))
 	}
@@ -84,35 +83,22 @@ func main() {
 	// dwn is a composite downloader: it can download anything, as long as one of its minions knows how to
 	dwn := downloader.NewCompositeDownloader([]service.Downloader{torrentDownloader, ytdlDownloader})
 
-	mkRedisClient := func(url string) (client *redis.Client, teardown func()) {
-		opt, err := redis.ParseURL(url)
-		if err != nil {
-			log.Fatalf("error parsing redis url: %v", err)
-		}
-		redisClient := redis.NewClient(opt)
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		if _, err := redisClient.Ping(ctx).Result(); err != nil {
-			log.Fatalf("error connecting to redis: %v", err)
-		}
-		return redisClient, func() { _ = redisClient.Close() }
-	}
-
-	// redisClient will be used both for storage
-	redisClient, teardownRedis := mkRedisClient(redisURL)
-	defer teardownRedis()
-
-	// and for jobs queue
-	bgRedisClient, teardownBgRedis := mkRedisClient(bgRedisURL)
-	defer teardownBgRedis()
-
-	queue, err := jobsqueue.NewRedisJobsQueue(bgRedisClient, 2, "mediary", logger)
+	db, err := sql.Open("sqlite", "file:"+sqliteDBPath+"?_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
-		log.Fatalf("error initializing redis jobs queue: %v", err)
+		log.Fatalf("error opening sqlite database: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	queue, err := jobsqueue.NewSQLJobsQueue(db, logger)
+	if err != nil {
+		log.Fatalf("error initializing sql jobs queue: %v", err)
 	}
 	defer queue.Shutdown()
 
-	store := storage.NewRedisStorage(redisClient, "mediary")
+	store, err := storage.NewSQLiteStorage(db)
+	if err != nil {
+		log.Fatalf("error initializing sqlite storage: %v", err)
+	}
 
 	mediaProc, err := media_processor.NewFFMpegMediaProcessor(logger)
 	if err != nil {
@@ -132,12 +118,4 @@ func main() {
 
 	log.Printf("Starting to listen on %s", bindAddr)
 	log.Println(http.ListenAndServe(bindAddr, handler))
-}
-
-func mustGetEnv(key string) string {
-	value, ok := os.LookupEnv(key)
-	if !ok {
-		log.Fatalf("missing env var: %s", key)
-	}
-	return value
 }

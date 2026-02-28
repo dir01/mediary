@@ -5,7 +5,7 @@ build:
 
 run:
 	@echo "+ $@"
-	REDIS_URL=redis://localhost:6379 go run ./cmd/server
+	SQLITE_DB_PATH=./mediary.db go run ./cmd/server
 .PHONY: run
 
 test:
@@ -22,7 +22,8 @@ precommit: tidy build lint test
 .PHONY: precommit
 
 lint:
-	docker run -t --rm -v $$(pwd):/app -w /app golangci/golangci-lint:v2.0.2 golangci-lint run -v --timeout 5m
+	@echo "+ $@"
+	golangci-lint run -v --timeout 5m
 .PHONY: lint
 
 test-e2e-gen-docs:

@@ -5,6 +5,7 @@ package tests
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -26,7 +27,7 @@ import (
 	jobsqueue "github.com/dir01/mediary/service/jobs_queue"
 	"github.com/dir01/mediary/storage"
 	"github.com/dir01/mediary/uploader"
-	"github.com/redis/go-redis/v9"
+	_ "modernc.org/sqlite"
 )
 
 var logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -55,24 +56,21 @@ func TestApplication(t *testing.T) {
 
 	dwn := downloader.NewCompositeDownloader([]service.Downloader{torrDwn, ytdlpDwn})
 
-	redisURL, teardownRedis, err := GetFakeRedisURL(context.Background())
-	defer teardownRedis()
+	db, err := sql.Open("sqlite", "file::memory:?cache=shared&_journal_mode=WAL")
 	if err != nil {
-		t.Fatalf("error getting redis url: %v", err)
+		t.Fatalf("error opening sqlite db: %v", err)
 	}
-	opt, err := redis.ParseURL(redisURL)
-	if err != nil {
-		t.Fatalf("error parsing redis url: %v", err)
-	}
-	redisClient := redis.NewClient(opt)
-	defer func() { _ = redisClient.Close() }()
+	defer func() { _ = db.Close() }()
 
-	queue, err := jobsqueue.NewRedisJobsQueue(redisClient, 10, "mediary:", logger)
+	queue, err := jobsqueue.NewSQLJobsQueue(db, logger)
 	if err != nil {
-		t.Fatalf("error initializing redis jobs queue: %v", err)
+		t.Fatalf("error initializing sql jobs queue: %v", err)
 	}
 
-	store := storage.NewRedisStorage(redisClient, "mediary:")
+	store, err := storage.NewSQLiteStorage(db)
+	if err != nil {
+		t.Fatalf("error initializing sqlite storage: %v", err)
+	}
 	mediaProcessor, err := media_processor.NewFFMpegMediaProcessor(logger)
 	if err != nil {
 		t.Fatalf("error creating media processor: %v", err)
