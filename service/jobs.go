@@ -131,7 +131,7 @@ func (svc *Service) GetJob(ctx context.Context, id string) (*Job, error) {
 
 // onPublishedJob is a callback that is invoked when a job is published to the jobs queue
 // actual job is done by the corresponding flow
-func (svc *Service) onPublishedJob(payload []byte) error {
+func (svc *Service) onPublishedJob(ctx context.Context, payload []byte) error {
 	var jobID string
 	if err := json.Unmarshal(payload, &jobID); err != nil {
 		return fmt.Errorf("failed to unmarshal job id: %w", err)
@@ -139,7 +139,7 @@ func (svc *Service) onPublishedJob(payload []byte) error {
 	svc.log.Debug("started onPublishedJob", slog.String("jobID", jobID))
 
 	ctx, span := otel.Tracer("github.com/dir01/mediary/service").Start(
-		context.Background(), "service.ProcessJob",
+		ctx, "service.ProcessJob",
 		trace.WithAttributes(attribute.String("job.id", jobID)),
 	)
 	defer span.End()

@@ -83,7 +83,7 @@ func TestGetMetadata(t *testing.T) {
 			storage := mocks.NewStorageMock(mc)
 			queue := mocks.NewJobsQueueMock(mc)
 			queue.
-				SubscribeMock.Optional().Set(func(ctx context.Context, jobType string, f1 func(payloadBytes []byte) error) {}).
+				SubscribeMock.Optional().Set(func(ctx context.Context, jobType string, f1 func(context.Context, []byte) error) {}).
 				RunMock.Optional().Set(func() {}).
 				PublishMock.Optional().Set(func(ctx context.Context, jobType string, payload any) (err error) { return nil }).
 				ShutdownMock.Optional().Set(func() {})

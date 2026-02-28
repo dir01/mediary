@@ -1,20 +1,7 @@
 {
-  "url": "magnet:?xt=urn:btih:FB0B49D5E3E18E29868C680D2F7BC00D67987D56",
-  "name": "Джо Диспенза - Медитации к Силе подсознания [Александр Шаронов]",
-  "variants": [
-    {
-      "id": "вступление.mp3",
-      "length_bytes": 1181881
-    },
-    {
-      "id": "глава 1.mp3",
-      "length_bytes": 40623850
-    },
-    {
-      "id": "глава 2.mp3",
-      "length_bytes": 42107250
-    }
-  ],
+  "url": "magnet:?xt=urn:btih:C4EBCC14E636E96F572D1FA9A648CE60D1AD823A",
+  "name": "Курт Воннегут. Бойня №5_ или Крестовый поход детей. Читают Борис Иванов и Вячеслав Езепов (1985).mp3",
+  "variants": [],
   "allow_multiple_variants": true,
   "downloader_name": "torrent"
 }

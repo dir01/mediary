@@ -33,7 +33,7 @@ import (
 var logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 const (
-	magnetURL      = "magnet:?xt=urn:btih:FB0B49D5E3E18E29868C680D2F7BC00D67987D56&tr=http%3A%2F%2Fbt.t-ru.org"
+	magnetURL      = "magnet:?xt=urn:btih:C4EBCC14E636E96F572D1FA9A648CE60D1AD823A"
 	testBucketName = "some-bucket"
 )
 

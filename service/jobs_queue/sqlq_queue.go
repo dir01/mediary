@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log/slog"
+	"time"
 
 	"github.com/dir01/sqlq"
 	"github.com/samber/oops"
@@ -15,7 +16,9 @@ type SQLQ struct {
 }
 
 func NewSQLJobsQueue(db *sql.DB, logger *slog.Logger) (*SQLQ, error) {
-	q, err := sqlq.New(db, sqlq.DBTypeSQLite)
+	q, err := sqlq.New(db, sqlq.DBTypeSQLite,
+		sqlq.WithDefaultJobTimeout(2*time.Hour),
+	)
 	if err != nil {
 		return nil, oops.Wrapf(err, "failed to create sqlq")
 	}
@@ -37,12 +40,11 @@ func (s *SQLQ) Publish(ctx context.Context, jobType string, payload any) error {
 	return nil
 }
 
-func (s *SQLQ) Subscribe(ctx context.Context, jobType string, f func(payloadBytes []byte) error) {
+func (s *SQLQ) Subscribe(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error) {
 	err := s.queue.Consume(ctx, jobType, func(ctx context.Context, tx *sql.Tx, payloadBytes []byte) error {
-		return f(payloadBytes)
+		return f(ctx, payloadBytes)
 	})
 	if err != nil {
 		s.logger.Error("failed to register consumer", slog.String("jobType", jobType), slog.Any("error", err))
 	}
 }
-

@@ -59,8 +59,8 @@ func NewService(
 }
 
 func (svc *Service) Start() {
-	svc.jobsQueue.Subscribe(context.Background(), "process", svc.onPublishedJob)
 	svc.jobsQueue.Run()
+	svc.jobsQueue.Subscribe(context.Background(), "process", svc.onPublishedJob)
 }
 
 func (svc *Service) Stop() {
@@ -105,7 +105,7 @@ type Downloader interface {
 //go:generate  go tool github.com/gojuno/minimock/v3/cmd/minimock -i JobsQueue -o ./mocks/jobs_queue_mock.go -g
 type JobsQueue interface {
 	Publish(ctx context.Context, jobType string, payload any) error
-	Subscribe(ctx context.Context, jobType string, f func(payloadBytes []byte) error)
+	Subscribe(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error)
 	Shutdown()
 	Run()
 }

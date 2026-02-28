@@ -38,7 +38,7 @@ func TestSQLJobsQueue(t *testing.T) {
 
 		var callCountMutex sync.RWMutex
 		callCount := 0
-		queue.Subscribe(ctx, "some-job-type", func(payloadBytes []byte) error {
+		queue.Subscribe(ctx, "some-job-type", func(_ context.Context, payloadBytes []byte) error {
 			var result map[string]string
 			err := json.Unmarshal(payloadBytes, &result)
 			if err != nil {
@@ -77,7 +77,7 @@ func TestSQLJobsQueue(t *testing.T) {
 
 		var callCountMutex sync.RWMutex
 		callCount := 0
-		queue.Subscribe(ctx, "some-job-type", func(payloadBytes []byte) error {
+		queue.Subscribe(ctx, "some-job-type", func(_ context.Context, payloadBytes []byte) error {
 			callCountMutex.Lock()
 			defer callCountMutex.Unlock()
 			callCount++
