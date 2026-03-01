@@ -1,7 +1,16 @@
 {
-  "url": "magnet:?xt=urn:btih:C4EBCC14E636E96F572D1FA9A648CE60D1AD823A",
-  "name": "Курт Воннегут. Бойня №5_ или Крестовый поход детей. Читают Борис Иванов и Вячеслав Езепов (1985).mp3",
-  "variants": [],
+  "url": "magnet:?xt=urn:btih:62f0dab4e2137fc19e89eb363e72799ca85ccbe8",
+  "name": "mediary-test-collection",
+  "variants": [
+    {
+      "id": "chapter1.mp3",
+      "length_bytes": 30
+    },
+    {
+      "id": "chapter2.mp3",
+      "length_bytes": 30
+    }
+  ],
   "allow_multiple_variants": true,
   "downloader_name": "torrent"
 }

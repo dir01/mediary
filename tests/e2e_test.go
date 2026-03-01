@@ -19,7 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/dir01/mediary/downloader"
-	"github.com/dir01/mediary/downloader/torrent"
+	torrentdownloader "github.com/dir01/mediary/downloader/torrent"
 	"github.com/dir01/mediary/downloader/ytdlp"
 	http2 "github.com/dir01/mediary/http"
 	"github.com/dir01/mediary/media_processor"
@@ -32,22 +32,37 @@ import (
 
 var logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-const (
-	magnetURL      = "magnet:?xt=urn:btih:C4EBCC14E636E96F572D1FA9A648CE60D1AD823A"
-	testBucketName = "some-bucket"
-)
+const testBucketName = "some-bucket"
 
 func TestApplication(t *testing.T) {
-	s3Client, teardownS3, err := GetS3Client(context.Background(), testBucketName)
-	defer teardownS3()
-	if err != nil {
-		t.Fatalf("error creating s3 client: %v", err)
-	}
+	var s3Client *s3.Client
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Logf("Docker not available, S3-dependent subtests will be skipped: %v", r)
+			}
+		}()
+		var teardown func()
+		var err error
+		s3Client, teardown, err = GetS3Client(context.Background(), testBucketName)
+		if err != nil {
+			t.Logf("S3 setup failed, S3-dependent subtests will be skipped: %v", err)
+			s3Client = nil
+			return
+		}
+		t.Cleanup(teardown)
+	}()
 
-	torrDwn, err := torrent.New(os.TempDir(), logger, false)
+	torrDwn, err := torrentdownloader.New(os.TempDir(), logger, false)
 	if err != nil {
 		t.Fatalf("error creating torrent downloader: %v", err)
 	}
+
+	seederClient, magnetURL := SetupLocalSeeder(t, "mediary-test-collection", map[string][]byte{
+		"chapter1.mp3": []byte("fake audio content - chapter 1"),
+		"chapter2.mp3": []byte("fake audio content - chapter 2"),
+	})
+	torrDwn.AddBootstrapPeer(seederClient)
 
 	ytdlpDwn, err := ytdlp.New(os.TempDir(), logger)
 	if err != nil {
@@ -106,8 +121,10 @@ In such cases, the endpoint will return a '''202 Accepted''' status code and a m
 Feel free to repeat your request later: metadata is still being fetched in background.
 `, expectedResponse)
 
+		// Use a random unreachable infohash — guaranteed to time out since there are no seeders.
+		unreachableURL := "magnet:?xt=urn:btih:0000000000000000000000000000000000000001"
 		docs.PerformRequestForDocs("GET",
-			`/metadata?url=`+magnetURL,
+			`/metadata?url=`+unreachableURL,
 			nil,
 			http.StatusAccepted,
 			func(rr *httptest.ResponseRecorder) {
@@ -214,6 +231,9 @@ Take this into account while presenting format options to user`)
 	})
 
 	t.Run("job creation and status", func(t *testing.T) {
+		if s3Client == nil {
+			t.Skip("S3 not available")
+		}
 		docs.InsertText(`### '''/jobs'''
 
 POST to '''/jobs''' will schedule for background execution a process of downloading, converting/processing and uploading the media.
@@ -307,6 +327,9 @@ To check the status of the job, you can use the '''/jobs/:id''' endpoint.`)
 	})
 
 	t.Run("downloading youtube video", func(t *testing.T) {
+		if s3Client == nil {
+			t.Skip("S3 not available")
+		}
 		docs.InsertText(`### Downloading YouTube audio
 
 To download a YouTube video, you need to pass the URL of the video to the '''/jobs''' endpoint.`)
