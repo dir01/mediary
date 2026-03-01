@@ -29,7 +29,7 @@ func main() {
 	// region env vars
 	sqliteDBPath := os.Getenv("SQLITE_DB_PATH")
 	if sqliteDBPath == "" {
-		sqliteDBPath = "./mediary.db"
+		log.Fatal("SQLITE_DB_PATH environment variable is required")
 	}
 
 	bindAddr := "0.0.0.0:8080"

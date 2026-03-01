@@ -2,6 +2,7 @@ package tests
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -9,6 +10,26 @@ import (
 	"github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/metainfo"
 )
+
+// MakeMinimalMP3 generates a short valid MP3 file using FFmpeg and returns its bytes.
+// The resulting file is a 0.1-second mono sine wave — small but processable by FFmpeg.
+func MakeMinimalMP3(t *testing.T) []byte {
+	t.Helper()
+	outFile := filepath.Join(t.TempDir(), "audio.mp3")
+	cmd := exec.Command("ffmpeg", "-y",
+		"-f", "lavfi", "-i", "sine=frequency=440:duration=0.1",
+		"-ar", "44100", "-ac", "1", "-b:a", "32k",
+		outFile,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("ffmpeg failed to generate test MP3: %v\n%s", err, out)
+	}
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("MakeMinimalMP3: read: %v", err)
+	}
+	return data
+}
 
 // SetupLocalSeeder starts a local torrent seeder with the given files under torrentName/.
 // Returns the seeder client (to pass to downloader.AddBootstrapPeer) and a canonical magnet URL.
@@ -55,7 +76,7 @@ func SetupLocalSeeder(t *testing.T, torrentName string, files map[string][]byte)
 	if err != nil {
 		t.Fatalf("SetupLocalSeeder: add torrent: %v", err)
 	}
-	torr.VerifyData()
+	_ = torr.VerifyDataContext(t.Context())
 
 	hash := mi.HashInfoBytes()
 	magnetURL := metainfo.Magnet{InfoHash: hash}.String()

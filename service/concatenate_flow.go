@@ -57,7 +57,9 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func(ctx context
 
 		updateJobStatus := func(status string) {
 			job.DisplayStatus = status
-			if err = svc.storage.SaveJob(ctx, job); err != nil {
+			statusCtx, statusCancel := context.WithTimeout(jobCtx, 1*time.Second)
+			defer statusCancel()
+			if err = svc.storage.SaveJob(statusCtx, job); err != nil {
 				attrs := append([]any{
 					slog.Any("error", err),
 					slog.String("state", job.DisplayStatus),

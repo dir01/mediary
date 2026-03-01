@@ -71,7 +71,12 @@ func TestApplication(t *testing.T) {
 
 	dwn := downloader.NewCompositeDownloader([]service.Downloader{torrDwn, ytdlpDwn})
 
-	db, err := sql.Open("sqlite", "file::memory:?cache=shared&_journal_mode=WAL")
+	// Use a temp file (not in-memory) so WAL mode actually takes effect.
+	// In-memory SQLite silently ignores _journal_mode=WAL and falls back to DELETE
+	// mode, where sqlq's read transaction blocks SaveJob writes from committing.
+	// WAL mode allows concurrent readers and writers on the same file.
+	dbPath := t.TempDir() + "/e2e.db"
+	db, err := sql.Open("sqlite", "file:"+dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
 		t.Fatalf("error opening sqlite db: %v", err)
 	}
@@ -251,6 +256,13 @@ requires a list of files to be concatenated and, optionally, an '''audioCodec'''
 		}
 		urlStr := presignResult.URL
 
+		mp3Data := MakeMinimalMP3(t)
+		jobSeederClient, jobMagnetURL := SetupLocalSeeder(t, "job-test-collection", map[string][]byte{
+			"01-001.mp3": mp3Data,
+			"01-002.mp3": mp3Data,
+		})
+		torrDwn.AddBootstrapPeer(jobSeederClient)
+
 		payload := strings.NewReader(fmt.Sprintf(`{
 	"url": "%s",
 	"type": "concatenate",
@@ -262,7 +274,7 @@ requires a list of files to be concatenated and, optionally, an '''audioCodec'''
 		"audioCodec": "mp3",
 		"uploadUrl": "%s"
 	}
-}`, "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73&tr=http%3A%2F%2Fbt3.t-ru.org", urlStr))
+}`, jobMagnetURL, urlStr))
 
 		var jobID string
 		docs.PerformRequestForDocs(
@@ -287,7 +299,7 @@ requires a list of files to be concatenated and, optionally, an '''audioCodec'''
 Since jobs can run for a long time, job creation api responds immediately with a job ID.
 To check the status of the job, you can use the '''/jobs/:id''' endpoint.`)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 
 		var jobStatus string
@@ -319,7 +331,7 @@ To check the status of the job, you can use the '''/jobs/:id''' endpoint.`)
 						docs.PerformRequestForDocs("GET", "/jobs/"+jobID, nil, http.StatusOK, nil)
 					}
 				})
-				if jobStatus == "complete" {
+				if jobStatus == service.JobStatusComplete {
 					break loop
 				}
 			}
