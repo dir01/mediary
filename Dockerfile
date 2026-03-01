@@ -2,14 +2,20 @@ FROM golang:1.26-alpine
 
 RUN apk add --no-cache gcc musl-dev g++ ffmpeg python3
 
-RUN wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp && chmod +x /usr/local/bin/yt-dlp
+ARG TARGETARCH
+RUN case "${TARGETARCH}" in \
+    "amd64") YTDLP_BINARY="yt-dlp" ;; \
+    "arm64") YTDLP_BINARY="yt-dlp_linux_aarch64" ;; \
+    *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
+  esac && \
+  wget "https://github.com/yt-dlp/yt-dlp/releases/latest/download/${YTDLP_BINARY}" -O /usr/local/bin/yt-dlp && \
+  chmod +x /usr/local/bin/yt-dlp
 
-RUN mkdir /app
-ENV GOPATH ""
+WORKDIR /app
 ADD go.mod go.sum ./
 RUN go mod download
 
 ADD . .
-RUN GOPATH= go build -o bin/server ./cmd/server
+RUN go build -o bin/server ./cmd/server
 
-CMD bin/server
+CMD ["/app/bin/server"]
