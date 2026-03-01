@@ -96,18 +96,19 @@ func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func(ctx cont
 		info, err := svc.mediaProcessor.GetInfo(downloadCtx, downloadedFilepath)
 		if err != nil {
 			span.RecordError(err)
-			span.SetStatus(codes.Error, err.Error())
-			return errCtx.Wrapf(err, "failed to get info about result file")
+			svc.log.Warn("failed to get info about result file, continuing without metadata",
+				append(logAttrs, slog.Any("error", err))...)
+		} else {
+			logAttrs = append(logAttrs, slog.Any("info", info))
+			errCtx = errCtx.With("info", info)
+			svc.log.Debug("got info about result file", logAttrs...)
+			job.ResultMediaDuration = info.Duration
+			job.ResultFileBytes = info.FileLenBytes
+			span.SetAttributes(
+				attribute.Int64("result.bytes", info.FileLenBytes),
+				attribute.Float64("result.duration_seconds", info.Duration.Seconds()),
+			)
 		}
-		logAttrs = append(logAttrs, slog.Any("info", info))
-		errCtx = errCtx.With("info", info)
-		svc.log.Debug("got info about result file", logAttrs...)
-		job.ResultMediaDuration = info.Duration
-		job.ResultFileBytes = info.FileLenBytes
-		span.SetAttributes(
-			attribute.Int64("result.bytes", info.FileLenBytes),
-			attribute.Float64("result.duration_seconds", info.Duration.Seconds()),
-		)
 
 		updateJobStatus(JobStatusUploading)
 		svc.log.Debug("starting upload", logAttrs...)

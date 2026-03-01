@@ -14,6 +14,52 @@ import (
 
 var testLogger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
+func TestParseDurationOutput(t *testing.T) {
+	tests := []struct {
+		name    string
+		output  string
+		want    float64
+		wantErr bool
+	}{
+		{
+			name:   "clean output",
+			output: "22930.241438\n",
+			want:   22930.241438,
+		},
+		{
+			name:   "bmp bad magic number warning before value",
+			output: "[bmp @ 0xffffa5eaeb40] bad magic number\n22930.241438\n",
+			want:   22930.241438,
+		},
+		{
+			name:   "multiple warning lines before value",
+			output: "[foo @ 0x1] some warning\n[bar @ 0x2] another warning\n123.456\n",
+			want:   123.456,
+		},
+		{
+			name:    "no valid float",
+			output:  "[bmp @ 0x1] bad magic number\n",
+			wantErr: true,
+		},
+		{
+			name:    "empty output",
+			output:  "",
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseDurationOutput(tt.output)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseDurationOutput() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err == nil && got != tt.want {
+				t.Errorf("parseDurationOutput() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestConcatenate_EmptyFilepathsReturnsError(t *testing.T) {
 	processor := &FFMpegMediaProcessor{log: testLogger}
 

@@ -145,13 +145,29 @@ func (conv *FFMpegMediaProcessor) GetDuration(filepath string) (time.Duration, e
 		return 0, errCtx.Wrapf(err, "failed to run ffprobe")
 	}
 
-	secondsStr := strings.TrimSpace(string(out))
-	seconds, err := strconv.ParseFloat(secondsStr, 64)
+	seconds, err := parseDurationOutput(string(out))
 	if err != nil {
 		return 0, errCtx.Wrapf(err, "failed to parse duration from ffprobe output")
 	}
 
 	return time.Duration(seconds * float64(time.Second)), nil
+}
+
+// parseDurationOutput extracts the duration float from ffprobe output.
+// ffprobe may emit warning/error lines (e.g. "[bmp @ 0x...] bad magic number")
+// before the actual value, so we scan lines in reverse for the last parseable float.
+func parseDurationOutput(output string) (float64, error) {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		if seconds, err := strconv.ParseFloat(line, 64); err == nil {
+			return seconds, nil
+		}
+	}
+	return 0, fmt.Errorf("no valid float found in output: %q", output)
 }
 
 func (conv *FFMpegMediaProcessor) AddChapterTags(ctx context.Context, filepath string, chapters []service.Chapter) error {
