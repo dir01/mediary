@@ -30,9 +30,27 @@ func New(dataDir string, logger *slog.Logger, isDebug bool) (*Downloader, error)
 }
 
 type Downloader struct {
-	torrentClient *anacrolixTorrent.Client
-	dataDir       string
-	log           *slog.Logger
+	torrentClient  *anacrolixTorrent.Client
+	dataDir        string
+	log            *slog.Logger
+	bootstrapPeers []*anacrolixTorrent.Client
+}
+
+// AddBootstrapPeer registers a torrent client to peer with on every magnet request.
+// Intended for testing: allows a local seeder to be wired in without needing DHT or trackers.
+func (td *Downloader) AddBootstrapPeer(peer *anacrolixTorrent.Client) {
+	td.bootstrapPeers = append(td.bootstrapPeers, peer)
+}
+
+func (td *Downloader) addMagnet(url string) (*anacrolixTorrent.Torrent, error) {
+	torr, err := td.torrentClient.AddMagnet(url)
+	if err != nil {
+		return nil, err
+	}
+	for _, peer := range td.bootstrapPeers {
+		torr.AddClientPeer(peer)
+	}
+	return torr, nil
 }
 
 func (td *Downloader) AcceptsURL(url string) bool {
@@ -40,7 +58,7 @@ func (td *Downloader) AcceptsURL(url string) bool {
 }
 
 func (td *Downloader) GetMetadata(ctx context.Context, url string) (*service.Metadata, error) {
-	torr, err := td.torrentClient.AddMagnet(url)
+	torr, err := td.addMagnet(url)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +97,7 @@ func (td *Downloader) Download(ctx context.Context, url string, filepaths []stri
 		return nil, fmt.Errorf("datadir %s is not a directory", td.dataDir)
 	}
 
-	torr, err := td.torrentClient.AddMagnet(url)
+	torr, err := td.addMagnet(url)
 	if err != nil {
 		td.log.Debug("failed to add magnet", slog.String("url", url), slog.Any("error", err))
 		return nil, err

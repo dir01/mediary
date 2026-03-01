@@ -29,7 +29,7 @@ type FFMpegMediaProcessor struct {
 }
 
 func (conv *FFMpegMediaProcessor) GetInfo(ctx context.Context, filepath string) (info *service.MediaInfo, err error) {
-	ctx, span := otel.Tracer("github.com/dir01/mediary/media_processor").Start(ctx, "media_processor.GetInfo",
+	_, span := otel.Tracer("github.com/dir01/mediary/media_processor").Start(ctx, "media_processor.GetInfo",
 		trace.WithAttributes(attribute.String("filepath", filepath)),
 	)
 	defer span.End()

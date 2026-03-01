@@ -5,6 +5,7 @@ package tests
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -18,7 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/dir01/mediary/downloader"
-	"github.com/dir01/mediary/downloader/torrent"
+	torrentdownloader "github.com/dir01/mediary/downloader/torrent"
 	"github.com/dir01/mediary/downloader/ytdlp"
 	http2 "github.com/dir01/mediary/http"
 	"github.com/dir01/mediary/media_processor"
@@ -26,27 +27,42 @@ import (
 	jobsqueue "github.com/dir01/mediary/service/jobs_queue"
 	"github.com/dir01/mediary/storage"
 	"github.com/dir01/mediary/uploader"
-	"github.com/redis/go-redis/v9"
+	_ "modernc.org/sqlite"
 )
 
 var logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-const (
-	magnetURL      = "magnet:?xt=urn:btih:FB0B49D5E3E18E29868C680D2F7BC00D67987D56&tr=http%3A%2F%2Fbt.t-ru.org"
-	testBucketName = "some-bucket"
-)
+const testBucketName = "some-bucket"
 
 func TestApplication(t *testing.T) {
-	s3Client, teardownS3, err := GetS3Client(context.Background(), testBucketName)
-	defer teardownS3()
-	if err != nil {
-		t.Fatalf("error creating s3 client: %v", err)
-	}
+	var s3Client *s3.Client
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Logf("Docker not available, S3-dependent subtests will be skipped: %v", r)
+			}
+		}()
+		var teardown func()
+		var err error
+		s3Client, teardown, err = GetS3Client(context.Background(), testBucketName)
+		if err != nil {
+			t.Logf("S3 setup failed, S3-dependent subtests will be skipped: %v", err)
+			s3Client = nil
+			return
+		}
+		t.Cleanup(teardown)
+	}()
 
-	torrDwn, err := torrent.New(os.TempDir(), logger, false)
+	torrDwn, err := torrentdownloader.New(os.TempDir(), logger, false)
 	if err != nil {
 		t.Fatalf("error creating torrent downloader: %v", err)
 	}
+
+	seederClient, magnetURL := SetupLocalSeeder(t, "mediary-test-collection", map[string][]byte{
+		"chapter1.mp3": []byte("fake audio content - chapter 1"),
+		"chapter2.mp3": []byte("fake audio content - chapter 2"),
+	})
+	torrDwn.AddBootstrapPeer(seederClient)
 
 	ytdlpDwn, err := ytdlp.New(os.TempDir(), logger)
 	if err != nil {
@@ -55,24 +71,26 @@ func TestApplication(t *testing.T) {
 
 	dwn := downloader.NewCompositeDownloader([]service.Downloader{torrDwn, ytdlpDwn})
 
-	redisURL, teardownRedis, err := GetFakeRedisURL(context.Background())
-	defer teardownRedis()
+	// Use a temp file (not in-memory) so WAL mode actually takes effect.
+	// In-memory SQLite silently ignores _journal_mode=WAL and falls back to DELETE
+	// mode, where sqlq's read transaction blocks SaveJob writes from committing.
+	// WAL mode allows concurrent readers and writers on the same file.
+	dbPath := t.TempDir() + "/e2e.db"
+	db, err := sql.Open("sqlite", "file:"+dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
-		t.Fatalf("error getting redis url: %v", err)
+		t.Fatalf("error opening sqlite db: %v", err)
 	}
-	opt, err := redis.ParseURL(redisURL)
-	if err != nil {
-		t.Fatalf("error parsing redis url: %v", err)
-	}
-	redisClient := redis.NewClient(opt)
-	defer func() { _ = redisClient.Close() }()
+	defer func() { _ = db.Close() }()
 
-	queue, err := jobsqueue.NewRedisJobsQueue(redisClient, 10, "mediary:", logger)
+	queue, err := jobsqueue.NewSQLJobsQueue(db, logger)
 	if err != nil {
-		t.Fatalf("error initializing redis jobs queue: %v", err)
+		t.Fatalf("error initializing sql jobs queue: %v", err)
 	}
 
-	store := storage.NewRedisStorage(redisClient, "mediary:")
+	store, err := storage.NewSQLiteStorage(db)
+	if err != nil {
+		t.Fatalf("error initializing sqlite storage: %v", err)
+	}
 	mediaProcessor, err := media_processor.NewFFMpegMediaProcessor(logger)
 	if err != nil {
 		t.Fatalf("error creating media processor: %v", err)
@@ -108,8 +126,10 @@ In such cases, the endpoint will return a '''202 Accepted''' status code and a m
 Feel free to repeat your request later: metadata is still being fetched in background.
 `, expectedResponse)
 
+		// Use a random unreachable infohash — guaranteed to time out since there are no seeders.
+		unreachableURL := "magnet:?xt=urn:btih:0000000000000000000000000000000000000001"
 		docs.PerformRequestForDocs("GET",
-			`/metadata?url=`+magnetURL,
+			`/metadata?url=`+unreachableURL,
 			nil,
 			http.StatusAccepted,
 			func(rr *httptest.ResponseRecorder) {
@@ -216,6 +236,9 @@ Take this into account while presenting format options to user`)
 	})
 
 	t.Run("job creation and status", func(t *testing.T) {
+		if s3Client == nil {
+			t.Skip("S3 not available")
+		}
 		docs.InsertText(`### '''/jobs'''
 
 POST to '''/jobs''' will schedule for background execution a process of downloading, converting/processing and uploading the media.
@@ -233,6 +256,13 @@ requires a list of files to be concatenated and, optionally, an '''audioCodec'''
 		}
 		urlStr := presignResult.URL
 
+		mp3Data := MakeMinimalMP3(t)
+		jobSeederClient, jobMagnetURL := SetupLocalSeeder(t, "job-test-collection", map[string][]byte{
+			"01-001.mp3": mp3Data,
+			"01-002.mp3": mp3Data,
+		})
+		torrDwn.AddBootstrapPeer(jobSeederClient)
+
 		payload := strings.NewReader(fmt.Sprintf(`{
 	"url": "%s",
 	"type": "concatenate",
@@ -244,7 +274,7 @@ requires a list of files to be concatenated and, optionally, an '''audioCodec'''
 		"audioCodec": "mp3",
 		"uploadUrl": "%s"
 	}
-}`, "magnet:?xt=urn:btih:58C665647C1A34019A0DC99C9046BD459F006B73&tr=http%3A%2F%2Fbt3.t-ru.org", urlStr))
+}`, jobMagnetURL, urlStr))
 
 		var jobID string
 		docs.PerformRequestForDocs(
@@ -269,7 +299,7 @@ requires a list of files to be concatenated and, optionally, an '''audioCodec'''
 Since jobs can run for a long time, job creation api responds immediately with a job ID.
 To check the status of the job, you can use the '''/jobs/:id''' endpoint.`)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 
 		var jobStatus string
@@ -301,7 +331,7 @@ To check the status of the job, you can use the '''/jobs/:id''' endpoint.`)
 						docs.PerformRequestForDocs("GET", "/jobs/"+jobID, nil, http.StatusOK, nil)
 					}
 				})
-				if jobStatus == "complete" {
+				if jobStatus == service.JobStatusComplete {
 					break loop
 				}
 			}
@@ -309,6 +339,9 @@ To check the status of the job, you can use the '''/jobs/:id''' endpoint.`)
 	})
 
 	t.Run("downloading youtube video", func(t *testing.T) {
+		if s3Client == nil {
+			t.Skip("S3 not available")
+		}
 		docs.InsertText(`### Downloading YouTube audio
 
 To download a YouTube video, you need to pass the URL of the video to the '''/jobs''' endpoint.`)

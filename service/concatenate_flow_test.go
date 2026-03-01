@@ -26,8 +26,8 @@ func TestConcatenateFlow_GetInfoErrorSkipsChapters(t *testing.T) {
 	mp := mocks.NewMediaProcessorMock(mc)
 	upl := mocks.NewUploaderMock(mc)
 
-	var onJob func(payloadBytes []byte) error
-	queue.SubscribeMock.Set(func(_ context.Context, _ string, f func([]byte) error) {
+	var onJob func(ctx context.Context, payloadBytes []byte) error
+	queue.SubscribeMock.Set(func(_ context.Context, _ string, f func(context.Context, []byte) error) {
 		onJob = f
 	})
 	queue.RunMock.Set(func() {})
@@ -98,7 +98,7 @@ func TestConcatenateFlow_GetInfoErrorSkipsChapters(t *testing.T) {
 	})
 
 	payload, _ := json.Marshal(jobID)
-	if err := onJob(payload); err != nil {
+	if err := onJob(context.Background(), payload); err != nil {
 		t.Fatalf("onJob failed: %v", err)
 	}
 
@@ -117,8 +117,8 @@ func TestConcatenateFlow_ChapterTimestamps(t *testing.T) {
 	upl := mocks.NewUploaderMock(mc)
 
 	// Capture the queue subscriber callback so we can invoke it directly.
-	var onJob func(payloadBytes []byte) error
-	queue.SubscribeMock.Set(func(_ context.Context, _ string, f func([]byte) error) {
+	var onJob func(ctx context.Context, payloadBytes []byte) error
+	queue.SubscribeMock.Set(func(_ context.Context, _ string, f func(context.Context, []byte) error) {
 		onJob = f
 	})
 	queue.RunMock.Set(func() {})
@@ -204,7 +204,7 @@ func TestConcatenateFlow_ChapterTimestamps(t *testing.T) {
 
 	// --- execute the flow via the captured callback ---
 	payload, _ := json.Marshal(jobID)
-	if err := onJob(payload); err != nil {
+	if err := onJob(context.Background(), payload); err != nil {
 		t.Fatalf("onJob failed: %v", err)
 	}
 
