@@ -6,10 +6,28 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	neturl "net/url"
+	"strings"
 	"time"
 
 	"github.com/dir01/mediary/service"
 )
+
+// extractURLParam extracts the "url" query parameter from a GET request.
+// Magnet URLs contain literal '&' separating parameters (e.g. &tr=, &dn=)
+// which standard query parsing splits on, truncating the URL.
+// When the parsed value looks like a magnet, we extract the raw value instead.
+func extractURLParam(req *http.Request) string {
+	url := req.URL.Query().Get("url")
+	if strings.HasPrefix(url, "magnet:") {
+		if i := strings.Index(req.URL.RawQuery, "url="); i != -1 {
+			if raw, err := neturl.QueryUnescape(req.URL.RawQuery[i+4:]); err == nil {
+				return raw
+			}
+		}
+	}
+	return url
+}
 
 func handleGetMetadata(svc *service.Service, timeout time.Duration) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, req *http.Request) {
@@ -23,7 +41,7 @@ func handleGetMetadata(svc *service.Service, timeout time.Duration) func(http.Re
 		var url string
 		switch req.Method {
 		case http.MethodGet:
-			url = req.URL.Query().Get("url")
+			url = extractURLParam(req)
 		case http.MethodPost:
 			// read json body
 			var body struct {
