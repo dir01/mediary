@@ -2,9 +2,12 @@ package media_processor
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -226,5 +229,60 @@ func TestAddChapterTags_FileWithoutExistingTag(t *testing.T) {
 			}
 			t.Errorf("chapter %d Title: want %q, got %q", i, chapters[i].Title, got)
 		}
+	}
+}
+
+// makeTestMP3 generates a short valid MP3 file with the given bitrate using FFmpeg.
+func makeTestMP3(t *testing.T, duration float64, bitrate string) string {
+	t.Helper()
+	outFile := filepath.Join(t.TempDir(), "audio.mp3")
+	cmd := exec.Command("ffmpeg", "-y",
+		"-f", "lavfi", "-i", fmt.Sprintf("sine=frequency=440:duration=%g", duration),
+		"-ar", "44100", "-ac", "1", "-b:a", bitrate,
+		outFile,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("ffmpeg failed to generate test MP3: %v\n%s", err, out)
+	}
+	return outFile
+}
+
+// TestConcatenate_OutputSizeNotLargerThanInputs verifies that concatenating
+// MP3 files with re-encoding does not produce output larger than the sum of inputs.
+// This reproduces the bug where ffmpeg used its default 128kbps bitrate instead of
+// matching the source bitrate, inflating the output.
+func TestConcatenate_OutputSizeNotLargerThanInputs(t *testing.T) {
+	// Create two MP3 files at 32kbps — a typical audiobook bitrate.
+	file1 := makeTestMP3(t, 1.0, "32k")
+	file2 := makeTestMP3(t, 1.0, "32k")
+
+	stat1, err := os.Stat(file1)
+	if err != nil {
+		t.Fatalf("stat file1: %v", err)
+	}
+	stat2, err := os.Stat(file2)
+	if err != nil {
+		t.Fatalf("stat file2: %v", err)
+	}
+	inputTotal := stat1.Size() + stat2.Size()
+
+	processor := &FFMpegMediaProcessor{log: testLogger}
+	resultPath, err := processor.Concatenate(context.Background(), []string{file1, file2}, "mp3")
+	if err != nil {
+		t.Fatalf("Concatenate failed: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(resultPath) })
+
+	resultStat, err := os.Stat(resultPath)
+	if err != nil {
+		t.Fatalf("stat result: %v", err)
+	}
+
+	// Allow 10% overhead for container/header differences, but no more.
+	maxExpected := int64(float64(inputTotal) * 1.10)
+	if resultStat.Size() > maxExpected {
+		t.Errorf("concatenated file is too large: result=%d bytes, inputs total=%d bytes (max allowed=%d). "+
+			"This suggests ffmpeg is re-encoding at a higher bitrate than the source files.",
+			resultStat.Size(), inputTotal, maxExpected)
 	}
 }
