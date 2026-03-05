@@ -96,7 +96,23 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 	logAttrs = append(logAttrs, slog.String("resultFilepath", resultFilepath))
 	span.SetAttributes(attribute.String("result.filepath", resultFilepath))
 
-	args := []string{"-y", "-i", "concat:" + strings.Join(filepaths, "|"), "-acodec", audioCodec, resultFilepath}
+	args := []string{"-y", "-i", "concat:" + strings.Join(filepaths, "|"), "-acodec", audioCodec}
+
+	// When re-encoding (audioCodec != "copy"), probe the source bitrate and
+	// pass it to ffmpeg so the output matches the source quality. Without this,
+	// ffmpeg uses its default bitrate (128kbps for MP3) which can inflate the output.
+	if audioCodec != "copy" {
+		if bitrate, probeErr := conv.getAudioBitrate(filepaths[0]); probeErr == nil {
+			args = append(args, "-b:a", bitrate)
+			span.SetAttributes(attribute.String("source_bitrate", bitrate))
+			logAttrs = append(logAttrs, slog.String("sourceBitrate", bitrate))
+		} else {
+			conv.log.Warn("failed to probe source bitrate, using ffmpeg default",
+				append(logAttrs, slog.Any("error", probeErr))...)
+		}
+	}
+
+	args = append(args, resultFilepath)
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	errCtx = errCtx.With("cmd", cmd.String())
 	logAttrs = append(logAttrs, slog.String("cmd", cmd.String()))
@@ -111,6 +127,29 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 	conv.log.Debug("ffmpeg finished successfully", logAttrs...)
 
 	return resultFilepath, nil
+}
+
+// getAudioBitrate probes the audio bitrate of the given file using ffprobe.
+// Returns bitrate as a string like "128000" (bits per second).
+func (conv *FFMpegMediaProcessor) getAudioBitrate(filepath string) (string, error) {
+	cmd := exec.Command(
+		"ffprobe",
+		"-v", "error",
+		"-select_streams", "a:0",
+		"-show_entries", "stream=bit_rate",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		filepath,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("ffprobe failed: %w", err)
+	}
+
+	bitrate := strings.TrimSpace(string(out))
+	if bitrate == "" || bitrate == "N/A" {
+		return "", fmt.Errorf("ffprobe returned no bitrate for %s", filepath)
+	}
+	return bitrate, nil
 }
 
 func (conv *FFMpegMediaProcessor) ExtractCoverArt(filepath string) (coverArtFilePath string, err error) {
