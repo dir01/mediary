@@ -101,6 +101,15 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func(ctx context
 				fsFilepaths = append(fsFilepaths, filepathsMap[fp])
 			}
 
+			// extract cover art from the first source file before concatenation
+			var coverArtPath string
+			if artPath, artErr := svc.mediaProcessor.ExtractCoverArt(downloadCtx, fsFilepaths[0]); artErr != nil {
+				svc.log.Debug("no cover art found in first file, proceeding without",
+					append(logAttrs, slog.Any("error", artErr))...)
+			} else {
+				coverArtPath = artPath
+			}
+
 			// collect per-file durations for chapter markers
 			var chapters []Chapter
 			var offset time.Duration
@@ -146,6 +155,14 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func(ctx context
 				if chapErr := svc.mediaProcessor.AddChapterTags(concatCtx, resultFilepath, chapters); chapErr != nil {
 					svc.log.Warn("failed to add chapter tags, proceeding without chapters",
 						append(logAttrs, slog.Any("error", chapErr))...)
+				}
+			}
+
+			// re-embed cover art into the concatenated file
+			if coverArtPath != "" {
+				if embedErr := svc.mediaProcessor.EmbedCoverArt(concatCtx, resultFilepath, coverArtPath); embedErr != nil {
+					svc.log.Warn("failed to embed cover art, proceeding without",
+						append(logAttrs, slog.Any("error", embedErr))...)
 				}
 			}
 		}

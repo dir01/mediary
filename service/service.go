@@ -123,6 +123,8 @@ type MediaProcessor interface {
 	Concatenate(ctx context.Context, filepaths []string, audioCodec string) (resultFilepath string, err error)
 	GetInfo(ctx context.Context, filepath string) (info *MediaInfo, err error)
 	AddChapterTags(ctx context.Context, filepath string, chapters []Chapter) error
+	ExtractCoverArt(ctx context.Context, filepath string) (coverArtFilePath string, err error)
+	EmbedCoverArt(ctx context.Context, filepath string, coverArtPath string) error
 }
 
 type MediaInfo struct {

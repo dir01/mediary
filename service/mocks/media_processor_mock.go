@@ -31,6 +31,20 @@ type MediaProcessorMock struct {
 	beforeConcatenateCounter uint64
 	ConcatenateMock          mMediaProcessorMockConcatenate
 
+	funcEmbedCoverArt          func(ctx context.Context, filepath string, coverArtPath string) (err error)
+	funcEmbedCoverArtOrigin    string
+	inspectFuncEmbedCoverArt   func(ctx context.Context, filepath string, coverArtPath string)
+	afterEmbedCoverArtCounter  uint64
+	beforeEmbedCoverArtCounter uint64
+	EmbedCoverArtMock          mMediaProcessorMockEmbedCoverArt
+
+	funcExtractCoverArt          func(ctx context.Context, filepath string) (coverArtFilePath string, err error)
+	funcExtractCoverArtOrigin    string
+	inspectFuncExtractCoverArt   func(ctx context.Context, filepath string)
+	afterExtractCoverArtCounter  uint64
+	beforeExtractCoverArtCounter uint64
+	ExtractCoverArtMock          mMediaProcessorMockExtractCoverArt
+
 	funcGetInfo          func(ctx context.Context, filepath string) (info *mm_service.MediaInfo, err error)
 	funcGetInfoOrigin    string
 	inspectFuncGetInfo   func(ctx context.Context, filepath string)
@@ -52,6 +66,12 @@ func NewMediaProcessorMock(t minimock.Tester) *MediaProcessorMock {
 
 	m.ConcatenateMock = mMediaProcessorMockConcatenate{mock: m}
 	m.ConcatenateMock.callArgs = []*MediaProcessorMockConcatenateParams{}
+
+	m.EmbedCoverArtMock = mMediaProcessorMockEmbedCoverArt{mock: m}
+	m.EmbedCoverArtMock.callArgs = []*MediaProcessorMockEmbedCoverArtParams{}
+
+	m.ExtractCoverArtMock = mMediaProcessorMockExtractCoverArt{mock: m}
+	m.ExtractCoverArtMock.callArgs = []*MediaProcessorMockExtractCoverArtParams{}
 
 	m.GetInfoMock = mMediaProcessorMockGetInfo{mock: m}
 	m.GetInfoMock.callArgs = []*MediaProcessorMockGetInfoParams{}
@@ -808,6 +828,722 @@ func (m *MediaProcessorMock) MinimockConcatenateInspect() {
 	}
 }
 
+type mMediaProcessorMockEmbedCoverArt struct {
+	optional           bool
+	mock               *MediaProcessorMock
+	defaultExpectation *MediaProcessorMockEmbedCoverArtExpectation
+	expectations       []*MediaProcessorMockEmbedCoverArtExpectation
+
+	callArgs []*MediaProcessorMockEmbedCoverArtParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// MediaProcessorMockEmbedCoverArtExpectation specifies expectation struct of the MediaProcessor.EmbedCoverArt
+type MediaProcessorMockEmbedCoverArtExpectation struct {
+	mock               *MediaProcessorMock
+	params             *MediaProcessorMockEmbedCoverArtParams
+	paramPtrs          *MediaProcessorMockEmbedCoverArtParamPtrs
+	expectationOrigins MediaProcessorMockEmbedCoverArtExpectationOrigins
+	results            *MediaProcessorMockEmbedCoverArtResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// MediaProcessorMockEmbedCoverArtParams contains parameters of the MediaProcessor.EmbedCoverArt
+type MediaProcessorMockEmbedCoverArtParams struct {
+	ctx          context.Context
+	filepath     string
+	coverArtPath string
+}
+
+// MediaProcessorMockEmbedCoverArtParamPtrs contains pointers to parameters of the MediaProcessor.EmbedCoverArt
+type MediaProcessorMockEmbedCoverArtParamPtrs struct {
+	ctx          *context.Context
+	filepath     *string
+	coverArtPath *string
+}
+
+// MediaProcessorMockEmbedCoverArtResults contains results of the MediaProcessor.EmbedCoverArt
+type MediaProcessorMockEmbedCoverArtResults struct {
+	err error
+}
+
+// MediaProcessorMockEmbedCoverArtOrigins contains origins of expectations of the MediaProcessor.EmbedCoverArt
+type MediaProcessorMockEmbedCoverArtExpectationOrigins struct {
+	origin             string
+	originCtx          string
+	originFilepath     string
+	originCoverArtPath string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmEmbedCoverArt *mMediaProcessorMockEmbedCoverArt) Optional() *mMediaProcessorMockEmbedCoverArt {
+	mmEmbedCoverArt.optional = true
+	return mmEmbedCoverArt
+}
+
+// Expect sets up expected params for MediaProcessor.EmbedCoverArt
+func (mmEmbedCoverArt *mMediaProcessorMockEmbedCoverArt) Expect(ctx context.Context, filepath string, coverArtPath string) *mMediaProcessorMockEmbedCoverArt {
+	if mmEmbedCoverArt.mock.funcEmbedCoverArt != nil {
+		mmEmbedCoverArt.mock.t.Fatalf("MediaProcessorMock.EmbedCoverArt mock is already set by Set")
+	}
+
+	if mmEmbedCoverArt.defaultExpectation == nil {
+		mmEmbedCoverArt.defaultExpectation = &MediaProcessorMockEmbedCoverArtExpectation{}
+	}
+
+	if mmEmbedCoverArt.defaultExpectation.paramPtrs != nil {
+		mmEmbedCoverArt.mock.t.Fatalf("MediaProcessorMock.EmbedCoverArt mock is already set by ExpectParams functions")
+	}
+
+	mmEmbedCoverArt.defaultExpectation.params = &MediaProcessorMockEmbedCoverArtParams{ctx, filepath, coverArtPath}
+	mmEmbedCoverArt.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmEmbedCoverArt.expectations {
+		if minimock.Equal(e.params, mmEmbedCoverArt.defaultExpectation.params) {
+			mmEmbedCoverArt.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmEmbedCoverArt.defaultExpectation.params)
+		}
+	}
+
+	return mmEmbedCoverArt
+}
+
+// ExpectCtxParam1 sets up expected param ctx for MediaProcessor.EmbedCoverArt
+func (mmEmbedCoverArt *mMediaProcessorMockEmbedCoverArt) ExpectCtxParam1(ctx context.Context) *mMediaProcessorMockEmbedCoverArt {
+	if mmEmbedCoverArt.mock.funcEmbedCoverArt != nil {
+		mmEmbedCoverArt.mock.t.Fatalf("MediaProcessorMock.EmbedCoverArt mock is already set by Set")
+	}
+
+	if mmEmbedCoverArt.defaultExpectation == nil {
+		mmEmbedCoverArt.defaultExpectation = &MediaProcessorMockEmbedCoverArtExpectation{}
+	}
+
+	if mmEmbedCoverArt.defaultExpectation.params != nil {
+		mmEmbedCoverArt.mock.t.Fatalf("MediaProcessorMock.EmbedCoverArt mock is already set by Expect")
+	}
+
+	if mmEmbedCoverArt.defaultExpectation.paramPtrs == nil {
+		mmEmbedCoverArt.defaultExpectation.paramPtrs = &MediaProcessorMockEmbedCoverArtParamPtrs{}
+	}
+	mmEmbedCoverArt.defaultExpectation.paramPtrs.ctx = &ctx
+	mmEmbedCoverArt.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmEmbedCoverArt
+}
+
+// ExpectFilepathParam2 sets up expected param filepath for MediaProcessor.EmbedCoverArt
+func (mmEmbedCoverArt *mMediaProcessorMockEmbedCoverArt) ExpectFilepathParam2(filepath string) *mMediaProcessorMockEmbedCoverArt {
+	if mmEmbedCoverArt.mock.funcEmbedCoverArt != nil {
+		mmEmbedCoverArt.mock.t.Fatalf("MediaProcessorMock.EmbedCoverArt mock is already set by Set")
+	}
+
+	if mmEmbedCoverArt.defaultExpectation == nil {
+		mmEmbedCoverArt.defaultExpectation = &MediaProcessorMockEmbedCoverArtExpectation{}
+	}
+
+	if mmEmbedCoverArt.defaultExpectation.params != nil {
+		mmEmbedCoverArt.mock.t.Fatalf("MediaProcessorMock.EmbedCoverArt mock is already set by Expect")
+	}
+
+	if mmEmbedCoverArt.defaultExpectation.paramPtrs == nil {
+		mmEmbedCoverArt.defaultExpectation.paramPtrs = &MediaProcessorMockEmbedCoverArtParamPtrs{}
+	}
+	mmEmbedCoverArt.defaultExpectation.paramPtrs.filepath = &filepath
+	mmEmbedCoverArt.defaultExpectation.expectationOrigins.originFilepath = minimock.CallerInfo(1)
+
+	return mmEmbedCoverArt
+}
+
+// ExpectCoverArtPathParam3 sets up expected param coverArtPath for MediaProcessor.EmbedCoverArt
+func (mmEmbedCoverArt *mMediaProcessorMockEmbedCoverArt) ExpectCoverArtPathParam3(coverArtPath string) *mMediaProcessorMockEmbedCoverArt {
+	if mmEmbedCoverArt.mock.funcEmbedCoverArt != nil {
+		mmEmbedCoverArt.mock.t.Fatalf("MediaProcessorMock.EmbedCoverArt mock is already set by Set")
+	}
+
+	if mmEmbedCoverArt.defaultExpectation == nil {
+		mmEmbedCoverArt.defaultExpectation = &MediaProcessorMockEmbedCoverArtExpectation{}
+	}
+
+	if mmEmbedCoverArt.defaultExpectation.params != nil {
+		mmEmbedCoverArt.mock.t.Fatalf("MediaProcessorMock.EmbedCoverArt mock is already set by Expect")
+	}
+
+	if mmEmbedCoverArt.defaultExpectation.paramPtrs == nil {
+		mmEmbedCoverArt.defaultExpectation.paramPtrs = &MediaProcessorMockEmbedCoverArtParamPtrs{}
+	}
+	mmEmbedCoverArt.defaultExpectation.paramPtrs.coverArtPath = &coverArtPath
+	mmEmbedCoverArt.defaultExpectation.expectationOrigins.originCoverArtPath = minimock.CallerInfo(1)
+
+	return mmEmbedCoverArt
+}
+
+// Inspect accepts an inspector function that has same arguments as the MediaProcessor.EmbedCoverArt
+func (mmEmbedCoverArt *mMediaProcessorMockEmbedCoverArt) Inspect(f func(ctx context.Context, filepath string, coverArtPath string)) *mMediaProcessorMockEmbedCoverArt {
+	if mmEmbedCoverArt.mock.inspectFuncEmbedCoverArt != nil {
+		mmEmbedCoverArt.mock.t.Fatalf("Inspect function is already set for MediaProcessorMock.EmbedCoverArt")
+	}
+
+	mmEmbedCoverArt.mock.inspectFuncEmbedCoverArt = f
+
+	return mmEmbedCoverArt
+}
+
+// Return sets up results that will be returned by MediaProcessor.EmbedCoverArt
+func (mmEmbedCoverArt *mMediaProcessorMockEmbedCoverArt) Return(err error) *MediaProcessorMock {
+	if mmEmbedCoverArt.mock.funcEmbedCoverArt != nil {
+		mmEmbedCoverArt.mock.t.Fatalf("MediaProcessorMock.EmbedCoverArt mock is already set by Set")
+	}
+
+	if mmEmbedCoverArt.defaultExpectation == nil {
+		mmEmbedCoverArt.defaultExpectation = &MediaProcessorMockEmbedCoverArtExpectation{mock: mmEmbedCoverArt.mock}
+	}
+	mmEmbedCoverArt.defaultExpectation.results = &MediaProcessorMockEmbedCoverArtResults{err}
+	mmEmbedCoverArt.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmEmbedCoverArt.mock
+}
+
+// Set uses given function f to mock the MediaProcessor.EmbedCoverArt method
+func (mmEmbedCoverArt *mMediaProcessorMockEmbedCoverArt) Set(f func(ctx context.Context, filepath string, coverArtPath string) (err error)) *MediaProcessorMock {
+	if mmEmbedCoverArt.defaultExpectation != nil {
+		mmEmbedCoverArt.mock.t.Fatalf("Default expectation is already set for the MediaProcessor.EmbedCoverArt method")
+	}
+
+	if len(mmEmbedCoverArt.expectations) > 0 {
+		mmEmbedCoverArt.mock.t.Fatalf("Some expectations are already set for the MediaProcessor.EmbedCoverArt method")
+	}
+
+	mmEmbedCoverArt.mock.funcEmbedCoverArt = f
+	mmEmbedCoverArt.mock.funcEmbedCoverArtOrigin = minimock.CallerInfo(1)
+	return mmEmbedCoverArt.mock
+}
+
+// When sets expectation for the MediaProcessor.EmbedCoverArt which will trigger the result defined by the following
+// Then helper
+func (mmEmbedCoverArt *mMediaProcessorMockEmbedCoverArt) When(ctx context.Context, filepath string, coverArtPath string) *MediaProcessorMockEmbedCoverArtExpectation {
+	if mmEmbedCoverArt.mock.funcEmbedCoverArt != nil {
+		mmEmbedCoverArt.mock.t.Fatalf("MediaProcessorMock.EmbedCoverArt mock is already set by Set")
+	}
+
+	expectation := &MediaProcessorMockEmbedCoverArtExpectation{
+		mock:               mmEmbedCoverArt.mock,
+		params:             &MediaProcessorMockEmbedCoverArtParams{ctx, filepath, coverArtPath},
+		expectationOrigins: MediaProcessorMockEmbedCoverArtExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmEmbedCoverArt.expectations = append(mmEmbedCoverArt.expectations, expectation)
+	return expectation
+}
+
+// Then sets up MediaProcessor.EmbedCoverArt return parameters for the expectation previously defined by the When method
+func (e *MediaProcessorMockEmbedCoverArtExpectation) Then(err error) *MediaProcessorMock {
+	e.results = &MediaProcessorMockEmbedCoverArtResults{err}
+	return e.mock
+}
+
+// Times sets number of times MediaProcessor.EmbedCoverArt should be invoked
+func (mmEmbedCoverArt *mMediaProcessorMockEmbedCoverArt) Times(n uint64) *mMediaProcessorMockEmbedCoverArt {
+	if n == 0 {
+		mmEmbedCoverArt.mock.t.Fatalf("Times of MediaProcessorMock.EmbedCoverArt mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmEmbedCoverArt.expectedInvocations, n)
+	mmEmbedCoverArt.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmEmbedCoverArt
+}
+
+func (mmEmbedCoverArt *mMediaProcessorMockEmbedCoverArt) invocationsDone() bool {
+	if len(mmEmbedCoverArt.expectations) == 0 && mmEmbedCoverArt.defaultExpectation == nil && mmEmbedCoverArt.mock.funcEmbedCoverArt == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmEmbedCoverArt.mock.afterEmbedCoverArtCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmEmbedCoverArt.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// EmbedCoverArt implements mm_service.MediaProcessor
+func (mmEmbedCoverArt *MediaProcessorMock) EmbedCoverArt(ctx context.Context, filepath string, coverArtPath string) (err error) {
+	mm_atomic.AddUint64(&mmEmbedCoverArt.beforeEmbedCoverArtCounter, 1)
+	defer mm_atomic.AddUint64(&mmEmbedCoverArt.afterEmbedCoverArtCounter, 1)
+
+	mmEmbedCoverArt.t.Helper()
+
+	if mmEmbedCoverArt.inspectFuncEmbedCoverArt != nil {
+		mmEmbedCoverArt.inspectFuncEmbedCoverArt(ctx, filepath, coverArtPath)
+	}
+
+	mm_params := MediaProcessorMockEmbedCoverArtParams{ctx, filepath, coverArtPath}
+
+	// Record call args
+	mmEmbedCoverArt.EmbedCoverArtMock.mutex.Lock()
+	mmEmbedCoverArt.EmbedCoverArtMock.callArgs = append(mmEmbedCoverArt.EmbedCoverArtMock.callArgs, &mm_params)
+	mmEmbedCoverArt.EmbedCoverArtMock.mutex.Unlock()
+
+	for _, e := range mmEmbedCoverArt.EmbedCoverArtMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.err
+		}
+	}
+
+	if mmEmbedCoverArt.EmbedCoverArtMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmEmbedCoverArt.EmbedCoverArtMock.defaultExpectation.Counter, 1)
+		mm_want := mmEmbedCoverArt.EmbedCoverArtMock.defaultExpectation.params
+		mm_want_ptrs := mmEmbedCoverArt.EmbedCoverArtMock.defaultExpectation.paramPtrs
+
+		mm_got := MediaProcessorMockEmbedCoverArtParams{ctx, filepath, coverArtPath}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmEmbedCoverArt.t.Errorf("MediaProcessorMock.EmbedCoverArt got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmEmbedCoverArt.EmbedCoverArtMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.filepath != nil && !minimock.Equal(*mm_want_ptrs.filepath, mm_got.filepath) {
+				mmEmbedCoverArt.t.Errorf("MediaProcessorMock.EmbedCoverArt got unexpected parameter filepath, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmEmbedCoverArt.EmbedCoverArtMock.defaultExpectation.expectationOrigins.originFilepath, *mm_want_ptrs.filepath, mm_got.filepath, minimock.Diff(*mm_want_ptrs.filepath, mm_got.filepath))
+			}
+
+			if mm_want_ptrs.coverArtPath != nil && !minimock.Equal(*mm_want_ptrs.coverArtPath, mm_got.coverArtPath) {
+				mmEmbedCoverArt.t.Errorf("MediaProcessorMock.EmbedCoverArt got unexpected parameter coverArtPath, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmEmbedCoverArt.EmbedCoverArtMock.defaultExpectation.expectationOrigins.originCoverArtPath, *mm_want_ptrs.coverArtPath, mm_got.coverArtPath, minimock.Diff(*mm_want_ptrs.coverArtPath, mm_got.coverArtPath))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmEmbedCoverArt.t.Errorf("MediaProcessorMock.EmbedCoverArt got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmEmbedCoverArt.EmbedCoverArtMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmEmbedCoverArt.EmbedCoverArtMock.defaultExpectation.results
+		if mm_results == nil {
+			mmEmbedCoverArt.t.Fatal("No results are set for the MediaProcessorMock.EmbedCoverArt")
+		}
+		return (*mm_results).err
+	}
+	if mmEmbedCoverArt.funcEmbedCoverArt != nil {
+		return mmEmbedCoverArt.funcEmbedCoverArt(ctx, filepath, coverArtPath)
+	}
+	mmEmbedCoverArt.t.Fatalf("Unexpected call to MediaProcessorMock.EmbedCoverArt. %v %v %v", ctx, filepath, coverArtPath)
+	return
+}
+
+// EmbedCoverArtAfterCounter returns a count of finished MediaProcessorMock.EmbedCoverArt invocations
+func (mmEmbedCoverArt *MediaProcessorMock) EmbedCoverArtAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmEmbedCoverArt.afterEmbedCoverArtCounter)
+}
+
+// EmbedCoverArtBeforeCounter returns a count of MediaProcessorMock.EmbedCoverArt invocations
+func (mmEmbedCoverArt *MediaProcessorMock) EmbedCoverArtBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmEmbedCoverArt.beforeEmbedCoverArtCounter)
+}
+
+// Calls returns a list of arguments used in each call to MediaProcessorMock.EmbedCoverArt.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmEmbedCoverArt *mMediaProcessorMockEmbedCoverArt) Calls() []*MediaProcessorMockEmbedCoverArtParams {
+	mmEmbedCoverArt.mutex.RLock()
+
+	argCopy := make([]*MediaProcessorMockEmbedCoverArtParams, len(mmEmbedCoverArt.callArgs))
+	copy(argCopy, mmEmbedCoverArt.callArgs)
+
+	mmEmbedCoverArt.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockEmbedCoverArtDone returns true if the count of the EmbedCoverArt invocations corresponds
+// the number of defined expectations
+func (m *MediaProcessorMock) MinimockEmbedCoverArtDone() bool {
+	if m.EmbedCoverArtMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.EmbedCoverArtMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.EmbedCoverArtMock.invocationsDone()
+}
+
+// MinimockEmbedCoverArtInspect logs each unmet expectation
+func (m *MediaProcessorMock) MinimockEmbedCoverArtInspect() {
+	for _, e := range m.EmbedCoverArtMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to MediaProcessorMock.EmbedCoverArt at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterEmbedCoverArtCounter := mm_atomic.LoadUint64(&m.afterEmbedCoverArtCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.EmbedCoverArtMock.defaultExpectation != nil && afterEmbedCoverArtCounter < 1 {
+		if m.EmbedCoverArtMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to MediaProcessorMock.EmbedCoverArt at\n%s", m.EmbedCoverArtMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to MediaProcessorMock.EmbedCoverArt at\n%s with params: %#v", m.EmbedCoverArtMock.defaultExpectation.expectationOrigins.origin, *m.EmbedCoverArtMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcEmbedCoverArt != nil && afterEmbedCoverArtCounter < 1 {
+		m.t.Errorf("Expected call to MediaProcessorMock.EmbedCoverArt at\n%s", m.funcEmbedCoverArtOrigin)
+	}
+
+	if !m.EmbedCoverArtMock.invocationsDone() && afterEmbedCoverArtCounter > 0 {
+		m.t.Errorf("Expected %d calls to MediaProcessorMock.EmbedCoverArt at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.EmbedCoverArtMock.expectedInvocations), m.EmbedCoverArtMock.expectedInvocationsOrigin, afterEmbedCoverArtCounter)
+	}
+}
+
+type mMediaProcessorMockExtractCoverArt struct {
+	optional           bool
+	mock               *MediaProcessorMock
+	defaultExpectation *MediaProcessorMockExtractCoverArtExpectation
+	expectations       []*MediaProcessorMockExtractCoverArtExpectation
+
+	callArgs []*MediaProcessorMockExtractCoverArtParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// MediaProcessorMockExtractCoverArtExpectation specifies expectation struct of the MediaProcessor.ExtractCoverArt
+type MediaProcessorMockExtractCoverArtExpectation struct {
+	mock               *MediaProcessorMock
+	params             *MediaProcessorMockExtractCoverArtParams
+	paramPtrs          *MediaProcessorMockExtractCoverArtParamPtrs
+	expectationOrigins MediaProcessorMockExtractCoverArtExpectationOrigins
+	results            *MediaProcessorMockExtractCoverArtResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// MediaProcessorMockExtractCoverArtParams contains parameters of the MediaProcessor.ExtractCoverArt
+type MediaProcessorMockExtractCoverArtParams struct {
+	ctx      context.Context
+	filepath string
+}
+
+// MediaProcessorMockExtractCoverArtParamPtrs contains pointers to parameters of the MediaProcessor.ExtractCoverArt
+type MediaProcessorMockExtractCoverArtParamPtrs struct {
+	ctx      *context.Context
+	filepath *string
+}
+
+// MediaProcessorMockExtractCoverArtResults contains results of the MediaProcessor.ExtractCoverArt
+type MediaProcessorMockExtractCoverArtResults struct {
+	coverArtFilePath string
+	err              error
+}
+
+// MediaProcessorMockExtractCoverArtOrigins contains origins of expectations of the MediaProcessor.ExtractCoverArt
+type MediaProcessorMockExtractCoverArtExpectationOrigins struct {
+	origin         string
+	originCtx      string
+	originFilepath string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmExtractCoverArt *mMediaProcessorMockExtractCoverArt) Optional() *mMediaProcessorMockExtractCoverArt {
+	mmExtractCoverArt.optional = true
+	return mmExtractCoverArt
+}
+
+// Expect sets up expected params for MediaProcessor.ExtractCoverArt
+func (mmExtractCoverArt *mMediaProcessorMockExtractCoverArt) Expect(ctx context.Context, filepath string) *mMediaProcessorMockExtractCoverArt {
+	if mmExtractCoverArt.mock.funcExtractCoverArt != nil {
+		mmExtractCoverArt.mock.t.Fatalf("MediaProcessorMock.ExtractCoverArt mock is already set by Set")
+	}
+
+	if mmExtractCoverArt.defaultExpectation == nil {
+		mmExtractCoverArt.defaultExpectation = &MediaProcessorMockExtractCoverArtExpectation{}
+	}
+
+	if mmExtractCoverArt.defaultExpectation.paramPtrs != nil {
+		mmExtractCoverArt.mock.t.Fatalf("MediaProcessorMock.ExtractCoverArt mock is already set by ExpectParams functions")
+	}
+
+	mmExtractCoverArt.defaultExpectation.params = &MediaProcessorMockExtractCoverArtParams{ctx, filepath}
+	mmExtractCoverArt.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmExtractCoverArt.expectations {
+		if minimock.Equal(e.params, mmExtractCoverArt.defaultExpectation.params) {
+			mmExtractCoverArt.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmExtractCoverArt.defaultExpectation.params)
+		}
+	}
+
+	return mmExtractCoverArt
+}
+
+// ExpectCtxParam1 sets up expected param ctx for MediaProcessor.ExtractCoverArt
+func (mmExtractCoverArt *mMediaProcessorMockExtractCoverArt) ExpectCtxParam1(ctx context.Context) *mMediaProcessorMockExtractCoverArt {
+	if mmExtractCoverArt.mock.funcExtractCoverArt != nil {
+		mmExtractCoverArt.mock.t.Fatalf("MediaProcessorMock.ExtractCoverArt mock is already set by Set")
+	}
+
+	if mmExtractCoverArt.defaultExpectation == nil {
+		mmExtractCoverArt.defaultExpectation = &MediaProcessorMockExtractCoverArtExpectation{}
+	}
+
+	if mmExtractCoverArt.defaultExpectation.params != nil {
+		mmExtractCoverArt.mock.t.Fatalf("MediaProcessorMock.ExtractCoverArt mock is already set by Expect")
+	}
+
+	if mmExtractCoverArt.defaultExpectation.paramPtrs == nil {
+		mmExtractCoverArt.defaultExpectation.paramPtrs = &MediaProcessorMockExtractCoverArtParamPtrs{}
+	}
+	mmExtractCoverArt.defaultExpectation.paramPtrs.ctx = &ctx
+	mmExtractCoverArt.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmExtractCoverArt
+}
+
+// ExpectFilepathParam2 sets up expected param filepath for MediaProcessor.ExtractCoverArt
+func (mmExtractCoverArt *mMediaProcessorMockExtractCoverArt) ExpectFilepathParam2(filepath string) *mMediaProcessorMockExtractCoverArt {
+	if mmExtractCoverArt.mock.funcExtractCoverArt != nil {
+		mmExtractCoverArt.mock.t.Fatalf("MediaProcessorMock.ExtractCoverArt mock is already set by Set")
+	}
+
+	if mmExtractCoverArt.defaultExpectation == nil {
+		mmExtractCoverArt.defaultExpectation = &MediaProcessorMockExtractCoverArtExpectation{}
+	}
+
+	if mmExtractCoverArt.defaultExpectation.params != nil {
+		mmExtractCoverArt.mock.t.Fatalf("MediaProcessorMock.ExtractCoverArt mock is already set by Expect")
+	}
+
+	if mmExtractCoverArt.defaultExpectation.paramPtrs == nil {
+		mmExtractCoverArt.defaultExpectation.paramPtrs = &MediaProcessorMockExtractCoverArtParamPtrs{}
+	}
+	mmExtractCoverArt.defaultExpectation.paramPtrs.filepath = &filepath
+	mmExtractCoverArt.defaultExpectation.expectationOrigins.originFilepath = minimock.CallerInfo(1)
+
+	return mmExtractCoverArt
+}
+
+// Inspect accepts an inspector function that has same arguments as the MediaProcessor.ExtractCoverArt
+func (mmExtractCoverArt *mMediaProcessorMockExtractCoverArt) Inspect(f func(ctx context.Context, filepath string)) *mMediaProcessorMockExtractCoverArt {
+	if mmExtractCoverArt.mock.inspectFuncExtractCoverArt != nil {
+		mmExtractCoverArt.mock.t.Fatalf("Inspect function is already set for MediaProcessorMock.ExtractCoverArt")
+	}
+
+	mmExtractCoverArt.mock.inspectFuncExtractCoverArt = f
+
+	return mmExtractCoverArt
+}
+
+// Return sets up results that will be returned by MediaProcessor.ExtractCoverArt
+func (mmExtractCoverArt *mMediaProcessorMockExtractCoverArt) Return(coverArtFilePath string, err error) *MediaProcessorMock {
+	if mmExtractCoverArt.mock.funcExtractCoverArt != nil {
+		mmExtractCoverArt.mock.t.Fatalf("MediaProcessorMock.ExtractCoverArt mock is already set by Set")
+	}
+
+	if mmExtractCoverArt.defaultExpectation == nil {
+		mmExtractCoverArt.defaultExpectation = &MediaProcessorMockExtractCoverArtExpectation{mock: mmExtractCoverArt.mock}
+	}
+	mmExtractCoverArt.defaultExpectation.results = &MediaProcessorMockExtractCoverArtResults{coverArtFilePath, err}
+	mmExtractCoverArt.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmExtractCoverArt.mock
+}
+
+// Set uses given function f to mock the MediaProcessor.ExtractCoverArt method
+func (mmExtractCoverArt *mMediaProcessorMockExtractCoverArt) Set(f func(ctx context.Context, filepath string) (coverArtFilePath string, err error)) *MediaProcessorMock {
+	if mmExtractCoverArt.defaultExpectation != nil {
+		mmExtractCoverArt.mock.t.Fatalf("Default expectation is already set for the MediaProcessor.ExtractCoverArt method")
+	}
+
+	if len(mmExtractCoverArt.expectations) > 0 {
+		mmExtractCoverArt.mock.t.Fatalf("Some expectations are already set for the MediaProcessor.ExtractCoverArt method")
+	}
+
+	mmExtractCoverArt.mock.funcExtractCoverArt = f
+	mmExtractCoverArt.mock.funcExtractCoverArtOrigin = minimock.CallerInfo(1)
+	return mmExtractCoverArt.mock
+}
+
+// When sets expectation for the MediaProcessor.ExtractCoverArt which will trigger the result defined by the following
+// Then helper
+func (mmExtractCoverArt *mMediaProcessorMockExtractCoverArt) When(ctx context.Context, filepath string) *MediaProcessorMockExtractCoverArtExpectation {
+	if mmExtractCoverArt.mock.funcExtractCoverArt != nil {
+		mmExtractCoverArt.mock.t.Fatalf("MediaProcessorMock.ExtractCoverArt mock is already set by Set")
+	}
+
+	expectation := &MediaProcessorMockExtractCoverArtExpectation{
+		mock:               mmExtractCoverArt.mock,
+		params:             &MediaProcessorMockExtractCoverArtParams{ctx, filepath},
+		expectationOrigins: MediaProcessorMockExtractCoverArtExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmExtractCoverArt.expectations = append(mmExtractCoverArt.expectations, expectation)
+	return expectation
+}
+
+// Then sets up MediaProcessor.ExtractCoverArt return parameters for the expectation previously defined by the When method
+func (e *MediaProcessorMockExtractCoverArtExpectation) Then(coverArtFilePath string, err error) *MediaProcessorMock {
+	e.results = &MediaProcessorMockExtractCoverArtResults{coverArtFilePath, err}
+	return e.mock
+}
+
+// Times sets number of times MediaProcessor.ExtractCoverArt should be invoked
+func (mmExtractCoverArt *mMediaProcessorMockExtractCoverArt) Times(n uint64) *mMediaProcessorMockExtractCoverArt {
+	if n == 0 {
+		mmExtractCoverArt.mock.t.Fatalf("Times of MediaProcessorMock.ExtractCoverArt mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmExtractCoverArt.expectedInvocations, n)
+	mmExtractCoverArt.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmExtractCoverArt
+}
+
+func (mmExtractCoverArt *mMediaProcessorMockExtractCoverArt) invocationsDone() bool {
+	if len(mmExtractCoverArt.expectations) == 0 && mmExtractCoverArt.defaultExpectation == nil && mmExtractCoverArt.mock.funcExtractCoverArt == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmExtractCoverArt.mock.afterExtractCoverArtCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmExtractCoverArt.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// ExtractCoverArt implements mm_service.MediaProcessor
+func (mmExtractCoverArt *MediaProcessorMock) ExtractCoverArt(ctx context.Context, filepath string) (coverArtFilePath string, err error) {
+	mm_atomic.AddUint64(&mmExtractCoverArt.beforeExtractCoverArtCounter, 1)
+	defer mm_atomic.AddUint64(&mmExtractCoverArt.afterExtractCoverArtCounter, 1)
+
+	mmExtractCoverArt.t.Helper()
+
+	if mmExtractCoverArt.inspectFuncExtractCoverArt != nil {
+		mmExtractCoverArt.inspectFuncExtractCoverArt(ctx, filepath)
+	}
+
+	mm_params := MediaProcessorMockExtractCoverArtParams{ctx, filepath}
+
+	// Record call args
+	mmExtractCoverArt.ExtractCoverArtMock.mutex.Lock()
+	mmExtractCoverArt.ExtractCoverArtMock.callArgs = append(mmExtractCoverArt.ExtractCoverArtMock.callArgs, &mm_params)
+	mmExtractCoverArt.ExtractCoverArtMock.mutex.Unlock()
+
+	for _, e := range mmExtractCoverArt.ExtractCoverArtMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.coverArtFilePath, e.results.err
+		}
+	}
+
+	if mmExtractCoverArt.ExtractCoverArtMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmExtractCoverArt.ExtractCoverArtMock.defaultExpectation.Counter, 1)
+		mm_want := mmExtractCoverArt.ExtractCoverArtMock.defaultExpectation.params
+		mm_want_ptrs := mmExtractCoverArt.ExtractCoverArtMock.defaultExpectation.paramPtrs
+
+		mm_got := MediaProcessorMockExtractCoverArtParams{ctx, filepath}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmExtractCoverArt.t.Errorf("MediaProcessorMock.ExtractCoverArt got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmExtractCoverArt.ExtractCoverArtMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.filepath != nil && !minimock.Equal(*mm_want_ptrs.filepath, mm_got.filepath) {
+				mmExtractCoverArt.t.Errorf("MediaProcessorMock.ExtractCoverArt got unexpected parameter filepath, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmExtractCoverArt.ExtractCoverArtMock.defaultExpectation.expectationOrigins.originFilepath, *mm_want_ptrs.filepath, mm_got.filepath, minimock.Diff(*mm_want_ptrs.filepath, mm_got.filepath))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmExtractCoverArt.t.Errorf("MediaProcessorMock.ExtractCoverArt got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmExtractCoverArt.ExtractCoverArtMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmExtractCoverArt.ExtractCoverArtMock.defaultExpectation.results
+		if mm_results == nil {
+			mmExtractCoverArt.t.Fatal("No results are set for the MediaProcessorMock.ExtractCoverArt")
+		}
+		return (*mm_results).coverArtFilePath, (*mm_results).err
+	}
+	if mmExtractCoverArt.funcExtractCoverArt != nil {
+		return mmExtractCoverArt.funcExtractCoverArt(ctx, filepath)
+	}
+	mmExtractCoverArt.t.Fatalf("Unexpected call to MediaProcessorMock.ExtractCoverArt. %v %v", ctx, filepath)
+	return
+}
+
+// ExtractCoverArtAfterCounter returns a count of finished MediaProcessorMock.ExtractCoverArt invocations
+func (mmExtractCoverArt *MediaProcessorMock) ExtractCoverArtAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmExtractCoverArt.afterExtractCoverArtCounter)
+}
+
+// ExtractCoverArtBeforeCounter returns a count of MediaProcessorMock.ExtractCoverArt invocations
+func (mmExtractCoverArt *MediaProcessorMock) ExtractCoverArtBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmExtractCoverArt.beforeExtractCoverArtCounter)
+}
+
+// Calls returns a list of arguments used in each call to MediaProcessorMock.ExtractCoverArt.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmExtractCoverArt *mMediaProcessorMockExtractCoverArt) Calls() []*MediaProcessorMockExtractCoverArtParams {
+	mmExtractCoverArt.mutex.RLock()
+
+	argCopy := make([]*MediaProcessorMockExtractCoverArtParams, len(mmExtractCoverArt.callArgs))
+	copy(argCopy, mmExtractCoverArt.callArgs)
+
+	mmExtractCoverArt.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockExtractCoverArtDone returns true if the count of the ExtractCoverArt invocations corresponds
+// the number of defined expectations
+func (m *MediaProcessorMock) MinimockExtractCoverArtDone() bool {
+	if m.ExtractCoverArtMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.ExtractCoverArtMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.ExtractCoverArtMock.invocationsDone()
+}
+
+// MinimockExtractCoverArtInspect logs each unmet expectation
+func (m *MediaProcessorMock) MinimockExtractCoverArtInspect() {
+	for _, e := range m.ExtractCoverArtMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to MediaProcessorMock.ExtractCoverArt at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterExtractCoverArtCounter := mm_atomic.LoadUint64(&m.afterExtractCoverArtCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.ExtractCoverArtMock.defaultExpectation != nil && afterExtractCoverArtCounter < 1 {
+		if m.ExtractCoverArtMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to MediaProcessorMock.ExtractCoverArt at\n%s", m.ExtractCoverArtMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to MediaProcessorMock.ExtractCoverArt at\n%s with params: %#v", m.ExtractCoverArtMock.defaultExpectation.expectationOrigins.origin, *m.ExtractCoverArtMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcExtractCoverArt != nil && afterExtractCoverArtCounter < 1 {
+		m.t.Errorf("Expected call to MediaProcessorMock.ExtractCoverArt at\n%s", m.funcExtractCoverArtOrigin)
+	}
+
+	if !m.ExtractCoverArtMock.invocationsDone() && afterExtractCoverArtCounter > 0 {
+		m.t.Errorf("Expected %d calls to MediaProcessorMock.ExtractCoverArt at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.ExtractCoverArtMock.expectedInvocations), m.ExtractCoverArtMock.expectedInvocationsOrigin, afterExtractCoverArtCounter)
+	}
+}
+
 type mMediaProcessorMockGetInfo struct {
 	optional           bool
 	mock               *MediaProcessorMock
@@ -1159,6 +1895,10 @@ func (m *MediaProcessorMock) MinimockFinish() {
 
 			m.MinimockConcatenateInspect()
 
+			m.MinimockEmbedCoverArtInspect()
+
+			m.MinimockExtractCoverArtInspect()
+
 			m.MinimockGetInfoInspect()
 		}
 	})
@@ -1185,5 +1925,7 @@ func (m *MediaProcessorMock) minimockDone() bool {
 	return done &&
 		m.MinimockAddChapterTagsDone() &&
 		m.MinimockConcatenateDone() &&
+		m.MinimockEmbedCoverArtDone() &&
+		m.MinimockExtractCoverArtDone() &&
 		m.MinimockGetInfoDone()
 }
