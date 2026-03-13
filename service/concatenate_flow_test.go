@@ -93,6 +93,14 @@ func TestConcatenateFlow_GetInfoErrorSkipsChapters(t *testing.T) {
 		return nil
 	})
 
+	// Cover art extraction may fail (no cover art in source); that's fine.
+	mp.ExtractCoverArtMock.Optional().Set(func(_ context.Context, fp string) (string, error) {
+		return "", errors.New("no cover art")
+	})
+	mp.EmbedCoverArtMock.Optional().Set(func(_ context.Context, fp string, coverArtPath string) error {
+		return nil
+	})
+
 	upl.UploadMock.Set(func(_ context.Context, fp string, url string) error {
 		return nil
 	})
@@ -198,6 +206,20 @@ func TestConcatenateFlow_ChapterTimestamps(t *testing.T) {
 		return nil
 	})
 
+	// Cover art: extract succeeds, embed should be called on the result file.
+	coverArtFile := "/tmp/dl/intro.mp3.jpg"
+	mp.ExtractCoverArtMock.Set(func(_ context.Context, fp string) (string, error) {
+		return coverArtFile, nil
+	})
+	var embedCoverArtCalledWith string
+	mp.EmbedCoverArtMock.Set(func(_ context.Context, fp string, artPath string) error {
+		embedCoverArtCalledWith = fp
+		if artPath != coverArtFile {
+			t.Errorf("EmbedCoverArt called with unexpected art path: %s", artPath)
+		}
+		return nil
+	})
+
 	upl.UploadMock.Set(func(_ context.Context, fp string, url string) error {
 		return nil
 	})
@@ -230,5 +252,10 @@ func TestConcatenateFlow_ChapterTimestamps(t *testing.T) {
 		if got.EndTime != want.EndTime {
 			t.Errorf("chapter %d EndTime: want %v, got %v", i, want.EndTime, got.EndTime)
 		}
+	}
+
+	// Verify cover art was embedded into the concatenated result file.
+	if embedCoverArtCalledWith != resultPath {
+		t.Errorf("EmbedCoverArt should be called on result file %q, got %q", resultPath, embedCoverArtCalledWith)
 	}
 }

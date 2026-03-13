@@ -152,20 +152,69 @@ func (conv *FFMpegMediaProcessor) getAudioBitrate(filepath string) (string, erro
 	return bitrate, nil
 }
 
-func (conv *FFMpegMediaProcessor) ExtractCoverArt(filepath string) (coverArtFilePath string, err error) {
+func (conv *FFMpegMediaProcessor) ExtractCoverArt(ctx context.Context, filepath string) (coverArtFilePath string, err error) {
+	_, span := otel.Tracer("github.com/dir01/mediary/media_processor").Start(ctx, "media_processor.ExtractCoverArt",
+		trace.WithAttributes(attribute.String("filepath", filepath)),
+	)
+	defer span.End()
+
 	errCtx := oops.With("filepath", filepath)
 	coverArtFilePath = filepath + ".jpg"
 	errCtx = errCtx.With("coverArtFilePath", coverArtFilePath)
 
-	cmd := exec.Command("ffmpeg", "-i", filepath, "-map", "0:v", "-map", "-0:V", "-c", "copy", "-y", coverArtFilePath)
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-i", filepath, "-map", "0:v", "-map", "-0:V", "-c", "copy", "-y", coverArtFilePath)
 	errCtx = errCtx.With("cmd", cmd.String())
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", errCtx.With("output", string(out)).Wrapf(err, "failed to run ffmpeg")
+		return "", errCtx.With("output", string(out)).Wrapf(err, "failed to extract cover art")
 	}
 
 	return coverArtFilePath, nil
+}
+
+func (conv *FFMpegMediaProcessor) EmbedCoverArt(ctx context.Context, filepath string, coverArtPath string) error {
+	_, span := otel.Tracer("github.com/dir01/mediary/media_processor").Start(ctx, "media_processor.EmbedCoverArt",
+		trace.WithAttributes(
+			attribute.String("filepath", filepath),
+			attribute.String("cover_art_path", coverArtPath),
+		),
+	)
+	defer span.End()
+
+	errCtx := oops.With("filepath", filepath, "coverArtPath", coverArtPath)
+
+	tag, err := id3v2.Open(filepath, id3v2.Options{Parse: true})
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return errCtx.Wrapf(err, "failed to open file for cover art embedding")
+	}
+	defer func() { _ = tag.Close() }()
+
+	artwork, err := os.ReadFile(coverArtPath)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return errCtx.Wrapf(err, "failed to read cover art file")
+	}
+
+	tag.AddAttachedPicture(id3v2.PictureFrame{
+		Encoding:    id3v2.EncodingUTF8,
+		MimeType:    "image/jpeg",
+		PictureType: id3v2.PTFrontCover,
+		Description: "Cover",
+		Picture:     artwork,
+	})
+
+	if err := tag.Save(); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return errCtx.Wrapf(err, "failed to save cover art")
+	}
+
+	conv.log.Debug("embedded cover art", slog.String("filepath", filepath), slog.String("coverArtPath", coverArtPath))
+	return nil
 }
 
 func (conv *FFMpegMediaProcessor) GetDuration(filepath string) (time.Duration, error) {
