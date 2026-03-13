@@ -252,6 +252,9 @@ func makeTestMP3(t *testing.T, duration float64, bitrate string) string {
 // This reproduces the bug where ffmpeg used its default 128kbps bitrate instead of
 // matching the source bitrate, inflating the output.
 func TestConcatenate_OutputSizeNotLargerThanInputs(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not found in PATH, skipping")
+	}
 	// Create two MP3 files at 32kbps — a typical audiobook bitrate.
 	file1 := makeTestMP3(t, 1.0, "32k")
 	file2 := makeTestMP3(t, 1.0, "32k")
