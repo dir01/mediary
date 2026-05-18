@@ -50,7 +50,7 @@ func main() {
 		stderrHandler = slog.NewJSONHandler(os.Stderr, nil)
 	}
 
-	otelShutdown, err := otelsetup.Setup(context.Background(), "mediary")
+	otelShutdown, err := otelsetup.Setup(context.Background())
 	if err != nil {
 		log.Fatalf("failed to setup opentelemetry: %v", err)
 	}

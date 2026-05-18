@@ -14,23 +14,23 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	otelglobal "go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/sdk/resource"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
 // Setup initializes OpenTelemetry trace, metric, and log providers via OTLP HTTP.
 // Returns a no-op shutdown when OTEL_EXPORTER_OTLP_ENDPOINT is not set.
-// Standard OTel environment variables (OTEL_EXPORTER_OTLP_ENDPOINT, etc.) configure exporters.
-func Setup(ctx context.Context, serviceName string) (shutdown func(context.Context) error, err error) {
+// Standard OTel environment variables (OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_SERVICE_NAME,
+// OTEL_SERVICE_VERSION, OTEL_RESOURCE_ATTRIBUTES, etc.) configure exporters and resource.
+func Setup(ctx context.Context) (shutdown func(context.Context) error, err error) {
 	if os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" {
 		return func(context.Context) error { return nil }, nil
 	}
 
 	res, err := resource.New(ctx,
-		resource.WithAttributes(semconv.ServiceName(serviceName)),
+		resource.WithFromEnv(),
 		resource.WithHost(),
 		resource.WithProcessPID(),
 	)
