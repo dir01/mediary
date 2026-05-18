@@ -41,12 +41,15 @@ cover:
 	go tool cover -html=coverage.out
 .PHONY: cover
 
+IMAGE_TAG := sha-$(shell git rev-parse --short HEAD)
+IMAGE := ghcr.io/dir01/mediary:$(IMAGE_TAG)
+
 docker-build:
 	@echo "+ $@"
-	docker build -t ghcr.io/dir01/mediary:alpha .
+	docker build -t $(IMAGE) .
 .PHONY: docker-build
 
 docker-push:
 	@echo "+ $@"
-	docker push ghcr.io/dir01/mediary:alpha
+	docker push $(IMAGE)
 .PHONY: docker-push
