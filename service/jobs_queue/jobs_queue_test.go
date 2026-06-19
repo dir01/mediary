@@ -99,7 +99,7 @@ func TestSQLJobsQueue(t *testing.T) {
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file::memory:?cache=shared&_journal_mode=WAL")
+	db, err := sql.Open("sqlite", "file::memory:?cache=shared&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
 	if err != nil {
 		t.Fatalf("error opening in-memory sqlite db: %v", err)
 	}
