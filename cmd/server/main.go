@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"log"
 	"log/slog"
 	"net/http"
@@ -20,7 +19,6 @@ import (
 	"github.com/dir01/mediary/storage"
 	"github.com/dir01/mediary/uploader"
 	"github.com/joho/godotenv"
-	_ "modernc.org/sqlite"
 )
 
 func main() {
@@ -83,7 +81,7 @@ func main() {
 	// dwn is a composite downloader: it can download anything, as long as one of its minions knows how to
 	dwn := downloader.NewCompositeDownloader([]service.Downloader{torrentDownloader, ytdlDownloader})
 
-	db, err := sql.Open("sqlite", "file:"+sqliteDBPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	db, err := storage.OpenSQLiteDB(sqliteDBPath)
 	if err != nil {
 		log.Fatalf("error opening sqlite database: %v", err)
 	}

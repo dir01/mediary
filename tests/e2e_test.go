@@ -5,7 +5,6 @@ package tests
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -27,7 +26,6 @@ import (
 	jobsqueue "github.com/dir01/mediary/service/jobs_queue"
 	"github.com/dir01/mediary/storage"
 	"github.com/dir01/mediary/uploader"
-	_ "modernc.org/sqlite"
 )
 
 var logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -71,12 +69,13 @@ func TestApplication(t *testing.T) {
 
 	dwn := downloader.NewCompositeDownloader([]service.Downloader{torrDwn, ytdlpDwn})
 
-	// Use a temp file (not in-memory) so WAL mode actually takes effect.
-	// In-memory SQLite silently ignores _journal_mode=WAL and falls back to DELETE
-	// mode, where sqlq's read transaction blocks SaveJob writes from committing.
-	// WAL mode allows concurrent readers and writers on the same file.
+	// Use a temp file (not in-memory) so WAL mode actually takes effect: in-memory
+	// SQLite can't use WAL and falls back to DELETE mode, where sqlq's read transaction
+	// blocks SaveJob writes from committing. WAL allows concurrent readers and writers.
+	// OpenSQLiteDB shares the exact DSN with production and verifies WAL + busy_timeout
+	// actually took effect, so this test can't silently drift from cmd/server/main.go.
 	dbPath := t.TempDir() + "/e2e.db"
-	db, err := sql.Open("sqlite", "file:"+dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	db, err := storage.OpenSQLiteDB(dbPath)
 	if err != nil {
 		t.Fatalf("error opening sqlite db: %v", err)
 	}
