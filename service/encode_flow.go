@@ -44,7 +44,7 @@ func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func(ctx cont
 		)
 		defer span.End()
 
-		ctx, cancel := context.WithTimeout(jobCtx, 1*time.Second)
+		ctx, cancel := context.WithTimeout(jobCtx, 10*time.Second)
 		defer cancel()
 		job, err := svc.storage.GetJob(ctx, jobID)
 		if err != nil {
@@ -54,7 +54,7 @@ func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func(ctx cont
 		}
 
 		updateJobStatus := func(status string) {
-			statusCtx, statusCancel := context.WithTimeout(jobCtx, 1*time.Second)
+			statusCtx, statusCancel := context.WithTimeout(jobCtx, 10*time.Second)
 			defer statusCancel()
 			job.DisplayStatus = status
 			if err = svc.storage.SaveJob(statusCtx, job); err != nil {
@@ -113,7 +113,7 @@ func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func(ctx cont
 		updateJobStatus(JobStatusUploading)
 		svc.log.Debug("starting upload", logAttrs...)
 
-		uploadCtx, uploadCancel := context.WithTimeout(jobCtx, 30*time.Minute)
+		uploadCtx, uploadCancel := context.WithTimeout(jobCtx, 2*time.Hour)
 		defer uploadCancel()
 
 		err = svc.uploader.Upload(uploadCtx, downloadedFilepath, params.UploadURL)
