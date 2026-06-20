@@ -44,7 +44,7 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func(ctx context
 		)
 		defer span.End()
 
-		ctx, cancel := context.WithTimeout(jobCtx, 1*time.Second)
+		ctx, cancel := context.WithTimeout(jobCtx, 10*time.Second)
 		defer cancel()
 		job, err := svc.storage.GetJob(ctx, jobID)
 		if err != nil {
@@ -57,7 +57,7 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func(ctx context
 
 		updateJobStatus := func(status string) {
 			job.DisplayStatus = status
-			statusCtx, statusCancel := context.WithTimeout(jobCtx, 1*time.Second)
+			statusCtx, statusCancel := context.WithTimeout(jobCtx, 10*time.Second)
 			defer statusCancel()
 			if err = svc.storage.SaveJob(statusCtx, job); err != nil {
 				attrs := append([]any{
@@ -122,7 +122,7 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func(ctx context
 			}
 
 			svc.log.Debug("starting conversion", logAttrs...)
-			concatCtx, concatCancel := context.WithTimeout(jobCtx, 30*time.Minute)
+			concatCtx, concatCancel := context.WithTimeout(jobCtx, 1*time.Hour)
 			defer concatCancel()
 
 			concatCtx, concatSpan := otel.Tracer("github.com/dir01/mediary/service").Start(concatCtx, "service.Concatenate",
@@ -170,7 +170,7 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func(ctx context
 		updateJobStatus(JobStatusUploading)
 		svc.log.Debug("starting upload", logAttrs...)
 
-		uploadCtx, uploadCancel := context.WithTimeout(jobCtx, 30*time.Minute)
+		uploadCtx, uploadCancel := context.WithTimeout(jobCtx, 2*time.Hour)
 		defer uploadCancel()
 
 		err = svc.uploader.Upload(uploadCtx, resultFilepath, params.UploadURL)
