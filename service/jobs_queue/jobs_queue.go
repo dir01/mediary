@@ -17,12 +17,13 @@ type SQLQ struct {
 }
 
 func NewSQLJobsQueue(db *sql.DB, logger *slog.Logger) (*SQLQ, error) {
-	// 2h is a hard total budget for a whole job, and the parent of every per-stage
-	// context in the flows. Each stage ceiling (download, concat, upload) is therefore
-	// capped by whatever time remains in this budget; the stage ceilings are kept well
-	// under 2h so a slow download/concat can't starve the upload.
+	// This is the deadline for the whole job and is the parent of every per-stage
+	// context in the flows (download 1h + concat 1h + upload 2h). It must exceed the
+	// sum of those stage budgets, otherwise time spent downloading/concatenating eats
+	// into the upload's budget and a large S3 PUT gets cancelled before its own
+	// per-stage timeout. 5h leaves headroom above the 4h worst-case sum.
 	q, err := sqlq.New(db, sqlq.DBTypeSQLite,
-		sqlq.WithDefaultJobTimeout(2*time.Hour),
+		sqlq.WithDefaultJobTimeout(5*time.Hour),
 		// Default is 3 retries; every attempt re-downloads and re-concatenates, so
 		// retries are expensive — keep the count modest.
 		sqlq.WithDefaultMaxRetries(5),
