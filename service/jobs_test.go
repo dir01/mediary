@@ -175,3 +175,104 @@ func TestCancelStopsRunningFlow(t *testing.T) {
 		t.Fatal("flow did not stop after CancelJob")
 	}
 }
+
+// TestCancelledJobSkipsExecution verifies that a job cancelled while still queued
+// is not executed when the worker later picks it up (P2 regression).
+func TestCancelledJobSkipsExecution(t *testing.T) {
+	const jobID = "cancelled-queued-job"
+	mc := minimock.NewController(t)
+	dwn := mocks.NewDownloaderMock(mc) // Download intentionally left unconfigured
+	storage := mocks.NewStorageMock(mc)
+	queue := mocks.NewJobsQueueMock(mc)
+
+	var handler func(context.Context, []byte) error
+	queue.
+		RunMock.Optional().Set(func() {}).
+		ShutdownMock.Optional().Set(func() {}).
+		PublishMock.Optional().Set(func(ctx context.Context, jobType string, payload any) error { return nil }).
+		SubscribeMock.Set(func(ctx context.Context, jobType string, f func(context.Context, []byte) error) {
+			handler = f
+		})
+
+	storage.GetJobMock.Set(func(ctx context.Context, id string) (*service.Job, error) {
+		return &service.Job{
+			JobParams: service.JobParams{
+				URL:  "magnet:?xt=urn:btih:deadbeef",
+				Type: "concatenate",
+				Params: map[string]interface{}{
+					"variants":  []interface{}{"file.mp3"},
+					"uploadUrl": "http://example.invalid/upload",
+				},
+			},
+			ID:            jobID,
+			DisplayStatus: service.JobStatusCancelled,
+		}, nil
+	})
+
+	svc := service.NewService(dwn, storage, queue, nil, nil, logger)
+	svc.Start()
+	defer svc.Stop()
+
+	payload, err := json.Marshal(jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// If the flow ran, it would call the unconfigured Download mock and panic.
+	if err := handler(context.Background(), payload); err != nil {
+		t.Fatalf("handler returned error for cancelled job: %v", err)
+	}
+}
+
+// TestCreateJobRefreshesUploadURLOnDuplicate verifies that a duplicate submit with
+// a fresh presigned upload URL updates the stored job (P1 regression).
+func TestCreateJobRefreshesUploadURLOnDuplicate(t *testing.T) {
+	const oldURL = "http://s3.local/bucket/key?X-Amz-Signature=OLD"
+	const newURL = "http://s3.local/bucket/key?X-Amz-Signature=NEW"
+
+	mc := minimock.NewController(t)
+	dwn := mocks.NewDownloaderMock(mc)
+	storage := mocks.NewStorageMock(mc)
+	queue := mocks.NewJobsQueueMock(mc)
+	queue.PublishMock.Optional().Set(func(ctx context.Context, jobType string, payload any) error { return nil })
+
+	existing := &service.Job{
+		JobParams: service.JobParams{
+			URL:  "magnet:?xt=urn:btih:deadbeef",
+			Type: "concatenate",
+			Params: map[string]interface{}{
+				"variants":  []interface{}{"file.mp3"},
+				"uploadUrl": oldURL,
+			},
+		},
+		ID:            "existing-id",
+		DisplayStatus: service.JobStatusDownloading,
+	}
+	storage.GetJobMock.Set(func(ctx context.Context, id string) (*service.Job, error) { return existing, nil })
+
+	var savedURL string
+	storage.SaveJobMock.Set(func(ctx context.Context, job *service.Job) error {
+		savedURL, _ = job.Params["uploadUrl"].(string)
+		return nil
+	})
+
+	svc := service.NewService(dwn, storage, queue, nil, nil, logger)
+
+	params := &service.JobParams{
+		URL:  "magnet:?xt=urn:btih:deadbeef",
+		Type: "concatenate",
+		Params: map[string]interface{}{
+			"variants":  []interface{}{"file.mp3"},
+			"uploadUrl": newURL,
+		},
+	}
+	job, err := svc.CreateJob(context.Background(), params)
+	if !errors.Is(err, service.ErrJobAlreadyExists) {
+		t.Fatalf("expected ErrJobAlreadyExists, got %v", err)
+	}
+	if got, _ := job.Params["uploadUrl"].(string); got != newURL {
+		t.Errorf("returned job upload url = %q, want refreshed %q", got, newURL)
+	}
+	if savedURL != newURL {
+		t.Errorf("stored job upload url = %q, want refreshed %q", savedURL, newURL)
+	}
+}

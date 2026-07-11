@@ -91,6 +91,8 @@ path-only), and `CreateJob` dedupes on **row existence, not status** — if a ro
 exists in *any* state, it's returned as-is (`ErrJobAlreadyExists`, 202) and no work is
 re-enqueued. That's what kills the cost loop, but it also means a failed/cancelled job can't be
 retried by re-creating it — the identical params resolve straight back to the dead record.
+(The one field a duplicate *does* refresh is the stored `uploadUrl`: it carries a fresh presigned
+signature for the same destination, so a not-yet-uploaded run doesn't upload with an expired URL.)
 
 Two `DELETE /jobs/{id}` modes, and both **stop a running flow** first:
 - **default = cancel** (`CancelJob`): stops the flow if running, flips `DisplayStatus` to
@@ -102,6 +104,7 @@ Two `DELETE /jobs/{id}` modes, and both **stop a running flow** first:
 Each flow runs under a cancelable context registered by job id (`Service.runningCancels`);
 cancel/purge cancel it. That also closes a resurrection race: `SaveJob` is an upsert
 (`INSERT OR REPLACE`), so an *un-cancelled* flow's next `updateJobStatus` would re-create a purged
-row — but a cancelled flow's status writes fail on the cancelled context instead. A job that is
-queued-but-not-yet-running is handled too: `onPublishedJob` treats a missing (purged) job as a
-no-op rather than panicking on a nil record.
+row — but a cancelled flow's status writes fail on the cancelled context instead. The
+queued-but-not-yet-running cases are handled in `onPublishedJob`, which no-ops when the job is
+missing (purged — also avoids a nil-record panic) or already `cancelled` (so a cancel that landed
+while the job sat in the queue isn't overwritten by a flow that runs anyway).

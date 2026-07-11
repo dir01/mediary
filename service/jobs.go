@@ -97,6 +97,17 @@ func (svc *Service) CreateJob(ctx context.Context, params *JobParams) (*Job, err
 	} else if existingState != nil {
 		svc.log.Debug("job already exists", slog.String("jobID", jobID))
 		span.SetAttributes(attribute.Bool("job.already_exists", true))
+		// The upload URL is stripped of its query before hashing, so a duplicate
+		// submit carrying a fresh presigned URL (same destination, new signature)
+		// resolves to this same job. Refresh the stored URL so a run that has not
+		// uploaded yet uses the still-valid signature instead of the original job's
+		// (possibly expired) one.
+		if refreshUploadURL(existingState, params) {
+			if err := svc.storage.SaveJob(ctx, existingState); err != nil {
+				svc.log.Error("failed to refresh upload url on existing job", slog.String("jobID", jobID), slog.Any("error", err))
+				span.RecordError(err)
+			}
+		}
 		return existingState, ErrJobAlreadyExists
 	}
 
@@ -167,6 +178,16 @@ func (svc *Service) onPublishedJob(ctx context.Context, payload []byte) error {
 		// free its id for a retry.
 		svc.log.Info("job no longer exists, skipping", slog.String("jobID", jobID))
 		span.SetAttributes(attribute.Bool("job.missing", true))
+		return nil
+	}
+	if jobState.DisplayStatus == JobStatusCancelled {
+		// Cancelled while still queued (before we picked it up). Honor the cancel:
+		// run nothing, so the flow's status writes can't overwrite the cancelled
+		// state and no download/upload happens. This covers the common
+		// cancel-before-execution race that stopRunningJob alone cannot (there is
+		// no running flow yet to cancel).
+		svc.log.Info("job was cancelled before execution, skipping", slog.String("jobID", jobID))
+		span.SetAttributes(attribute.Bool("job.cancelled", true))
 		return nil
 	}
 	span.SetAttributes(attribute.String("job.type", jobState.Type))
@@ -261,6 +282,25 @@ func stripURLQuery(raw string) string {
 		return raw[:i]
 	}
 	return raw
+}
+
+// refreshUploadURL copies the incoming uploadUrl into an existing job's params.
+// Two submits of the same work hash to the same job id even though the presigned
+// uploadUrl's signature/expiry differ (the query is stripped before hashing), so
+// a duplicate carries a fresh, still-valid URL. Returns whether anything changed.
+func refreshUploadURL(existing *Job, incoming *JobParams) bool {
+	newURL, ok := incoming.Params["uploadUrl"].(string)
+	if !ok || newURL == "" {
+		return false
+	}
+	if oldURL, _ := existing.Params["uploadUrl"].(string); oldURL == newURL {
+		return false
+	}
+	if existing.Params == nil {
+		existing.Params = map[string]interface{}{}
+	}
+	existing.Params["uploadUrl"] = newURL
+	return true
 }
 
 // CancelJob marks a job terminally cancelled and stops its flow if it is
