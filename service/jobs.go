@@ -159,9 +159,17 @@ func (svc *Service) onPublishedJob(ctx context.Context, payload []byte) error {
 		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("failed to get job state: %w", err)
 	}
-	if jobState != nil {
-		span.SetAttributes(attribute.String("job.type", jobState.Type))
+	if jobState == nil {
+		// The job was deleted (purged) after being enqueued but before we picked
+		// it up. There is nothing to run — treat it as a successful no-op so the
+		// queue does not retry (and so constructFlow is never handed a nil job,
+		// which would panic). This is the expected path when a job is purged to
+		// free its id for a retry.
+		svc.log.Info("job no longer exists, skipping", slog.String("jobID", jobID))
+		span.SetAttributes(attribute.Bool("job.missing", true))
+		return nil
 	}
+	span.SetAttributes(attribute.String("job.type", jobState.Type))
 
 	flow, err := svc.constructFlow(jobID, jobState)
 	if err != nil {
@@ -171,8 +179,13 @@ func (svc *Service) onPublishedJob(ctx context.Context, payload []byte) error {
 		return fmt.Errorf("failed to construct flow: %w", err)
 	}
 
+	// Run the flow under a cancelable context registered by job id, so CancelJob
+	// and DeleteJob can stop it mid-flight.
+	flowCtx, cancelFlow := context.WithCancel(ctx)
+	defer svc.beginJob(jobID, cancelFlow)()
+
 	start := time.Now()
-	if err := flow(ctx); err != nil {
+	if err := flow(flowCtx); err != nil {
 		svc.log.Error("failed to execute flow", slog.String("jobID", jobID), slog.Any("error", err))
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -250,11 +263,10 @@ func stripURLQuery(raw string) string {
 	return raw
 }
 
-// CancelJob marks a job as terminally cancelled so callers stop treating it as
-// in-progress. It does not interrupt an already-running flow (there is no
-// in-flight cancellation), but it gives a stuck or never-completing job a
-// terminal state to observe instead of looking perpetually in-progress.
-// Returns (nil, nil) when the job does not exist.
+// CancelJob marks a job terminally cancelled and stops its flow if it is
+// currently running (its context is cancelled, so the active stage aborts and
+// no further status writes land). It also gives a stuck or never-completing job
+// a terminal state to observe. Returns (nil, nil) when the job does not exist.
 func (svc *Service) CancelJob(ctx context.Context, id string) (*Job, error) {
 	ctx, span := otel.Tracer("github.com/dir01/mediary/service").Start(ctx, "service.CancelJob",
 		trace.WithAttributes(attribute.String("job.id", id)),
@@ -276,6 +288,45 @@ func (svc *Service) CancelJob(ctx context.Context, id string) (*Job, error) {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("failed to save cancelled job: %w", err)
+	}
+	svc.stopRunningJob(id)
+	return job, nil
+}
+
+// DeleteJob stops a job's flow if it is running, then hard-removes the record so
+// its content-addressed id is free again: because CreateJob dedupes on row
+// existence (not status), a subsequent create with the same params re-enqueues
+// real work instead of attaching to the old record. This is what makes a "retry"
+// possible for a failed/cancelled job.
+//
+// Stopping the flow first (cancelling its context) is what keeps the delete
+// durable: SaveJob is an upsert, so an un-cancelled flow's next status write
+// would resurrect the row; a cancelled flow's writes fail instead.
+// Returns the deleted job, or (nil, nil) when it does not exist.
+func (svc *Service) DeleteJob(ctx context.Context, id string) (*Job, error) {
+	ctx, span := otel.Tracer("github.com/dir01/mediary/service").Start(ctx, "service.DeleteJob",
+		trace.WithAttributes(attribute.String("job.id", id)),
+	)
+	defer span.End()
+
+	job, err := svc.storage.GetJob(ctx, id)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+	if job == nil {
+		return nil, nil
+	}
+
+	// Stop any in-flight flow first so its status writes fail on the cancelled
+	// context instead of resurrecting the row we are about to delete.
+	svc.stopRunningJob(id)
+
+	if err := svc.storage.DeleteJob(ctx, id); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, fmt.Errorf("failed to delete job: %w", err)
 	}
 	return job, nil
 }

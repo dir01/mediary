@@ -17,6 +17,13 @@ type StorageMock struct {
 	t          minimock.Tester
 	finishOnce sync.Once
 
+	funcDeleteJob          func(ctx context.Context, id string) (err error)
+	funcDeleteJobOrigin    string
+	inspectFuncDeleteJob   func(ctx context.Context, id string)
+	afterDeleteJobCounter  uint64
+	beforeDeleteJobCounter uint64
+	DeleteJobMock          mStorageMockDeleteJob
+
 	funcGetJob          func(ctx context.Context, id string) (jp1 *mm_service.Job, err error)
 	funcGetJobOrigin    string
 	inspectFuncGetJob   func(ctx context.Context, id string)
@@ -54,6 +61,9 @@ func NewStorageMock(t minimock.Tester) *StorageMock {
 		controller.RegisterMocker(m)
 	}
 
+	m.DeleteJobMock = mStorageMockDeleteJob{mock: m}
+	m.DeleteJobMock.callArgs = []*StorageMockDeleteJobParams{}
+
 	m.GetJobMock = mStorageMockGetJob{mock: m}
 	m.GetJobMock.callArgs = []*StorageMockGetJobParams{}
 
@@ -69,6 +79,348 @@ func NewStorageMock(t minimock.Tester) *StorageMock {
 	t.Cleanup(m.MinimockFinish)
 
 	return m
+}
+
+type mStorageMockDeleteJob struct {
+	optional           bool
+	mock               *StorageMock
+	defaultExpectation *StorageMockDeleteJobExpectation
+	expectations       []*StorageMockDeleteJobExpectation
+
+	callArgs []*StorageMockDeleteJobParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// StorageMockDeleteJobExpectation specifies expectation struct of the Storage.DeleteJob
+type StorageMockDeleteJobExpectation struct {
+	mock               *StorageMock
+	params             *StorageMockDeleteJobParams
+	paramPtrs          *StorageMockDeleteJobParamPtrs
+	expectationOrigins StorageMockDeleteJobExpectationOrigins
+	results            *StorageMockDeleteJobResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// StorageMockDeleteJobParams contains parameters of the Storage.DeleteJob
+type StorageMockDeleteJobParams struct {
+	ctx context.Context
+	id  string
+}
+
+// StorageMockDeleteJobParamPtrs contains pointers to parameters of the Storage.DeleteJob
+type StorageMockDeleteJobParamPtrs struct {
+	ctx *context.Context
+	id  *string
+}
+
+// StorageMockDeleteJobResults contains results of the Storage.DeleteJob
+type StorageMockDeleteJobResults struct {
+	err error
+}
+
+// StorageMockDeleteJobOrigins contains origins of expectations of the Storage.DeleteJob
+type StorageMockDeleteJobExpectationOrigins struct {
+	origin    string
+	originCtx string
+	originId  string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmDeleteJob *mStorageMockDeleteJob) Optional() *mStorageMockDeleteJob {
+	mmDeleteJob.optional = true
+	return mmDeleteJob
+}
+
+// Expect sets up expected params for Storage.DeleteJob
+func (mmDeleteJob *mStorageMockDeleteJob) Expect(ctx context.Context, id string) *mStorageMockDeleteJob {
+	if mmDeleteJob.mock.funcDeleteJob != nil {
+		mmDeleteJob.mock.t.Fatalf("StorageMock.DeleteJob mock is already set by Set")
+	}
+
+	if mmDeleteJob.defaultExpectation == nil {
+		mmDeleteJob.defaultExpectation = &StorageMockDeleteJobExpectation{}
+	}
+
+	if mmDeleteJob.defaultExpectation.paramPtrs != nil {
+		mmDeleteJob.mock.t.Fatalf("StorageMock.DeleteJob mock is already set by ExpectParams functions")
+	}
+
+	mmDeleteJob.defaultExpectation.params = &StorageMockDeleteJobParams{ctx, id}
+	mmDeleteJob.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmDeleteJob.expectations {
+		if minimock.Equal(e.params, mmDeleteJob.defaultExpectation.params) {
+			mmDeleteJob.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmDeleteJob.defaultExpectation.params)
+		}
+	}
+
+	return mmDeleteJob
+}
+
+// ExpectCtxParam1 sets up expected param ctx for Storage.DeleteJob
+func (mmDeleteJob *mStorageMockDeleteJob) ExpectCtxParam1(ctx context.Context) *mStorageMockDeleteJob {
+	if mmDeleteJob.mock.funcDeleteJob != nil {
+		mmDeleteJob.mock.t.Fatalf("StorageMock.DeleteJob mock is already set by Set")
+	}
+
+	if mmDeleteJob.defaultExpectation == nil {
+		mmDeleteJob.defaultExpectation = &StorageMockDeleteJobExpectation{}
+	}
+
+	if mmDeleteJob.defaultExpectation.params != nil {
+		mmDeleteJob.mock.t.Fatalf("StorageMock.DeleteJob mock is already set by Expect")
+	}
+
+	if mmDeleteJob.defaultExpectation.paramPtrs == nil {
+		mmDeleteJob.defaultExpectation.paramPtrs = &StorageMockDeleteJobParamPtrs{}
+	}
+	mmDeleteJob.defaultExpectation.paramPtrs.ctx = &ctx
+	mmDeleteJob.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmDeleteJob
+}
+
+// ExpectIdParam2 sets up expected param id for Storage.DeleteJob
+func (mmDeleteJob *mStorageMockDeleteJob) ExpectIdParam2(id string) *mStorageMockDeleteJob {
+	if mmDeleteJob.mock.funcDeleteJob != nil {
+		mmDeleteJob.mock.t.Fatalf("StorageMock.DeleteJob mock is already set by Set")
+	}
+
+	if mmDeleteJob.defaultExpectation == nil {
+		mmDeleteJob.defaultExpectation = &StorageMockDeleteJobExpectation{}
+	}
+
+	if mmDeleteJob.defaultExpectation.params != nil {
+		mmDeleteJob.mock.t.Fatalf("StorageMock.DeleteJob mock is already set by Expect")
+	}
+
+	if mmDeleteJob.defaultExpectation.paramPtrs == nil {
+		mmDeleteJob.defaultExpectation.paramPtrs = &StorageMockDeleteJobParamPtrs{}
+	}
+	mmDeleteJob.defaultExpectation.paramPtrs.id = &id
+	mmDeleteJob.defaultExpectation.expectationOrigins.originId = minimock.CallerInfo(1)
+
+	return mmDeleteJob
+}
+
+// Inspect accepts an inspector function that has same arguments as the Storage.DeleteJob
+func (mmDeleteJob *mStorageMockDeleteJob) Inspect(f func(ctx context.Context, id string)) *mStorageMockDeleteJob {
+	if mmDeleteJob.mock.inspectFuncDeleteJob != nil {
+		mmDeleteJob.mock.t.Fatalf("Inspect function is already set for StorageMock.DeleteJob")
+	}
+
+	mmDeleteJob.mock.inspectFuncDeleteJob = f
+
+	return mmDeleteJob
+}
+
+// Return sets up results that will be returned by Storage.DeleteJob
+func (mmDeleteJob *mStorageMockDeleteJob) Return(err error) *StorageMock {
+	if mmDeleteJob.mock.funcDeleteJob != nil {
+		mmDeleteJob.mock.t.Fatalf("StorageMock.DeleteJob mock is already set by Set")
+	}
+
+	if mmDeleteJob.defaultExpectation == nil {
+		mmDeleteJob.defaultExpectation = &StorageMockDeleteJobExpectation{mock: mmDeleteJob.mock}
+	}
+	mmDeleteJob.defaultExpectation.results = &StorageMockDeleteJobResults{err}
+	mmDeleteJob.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmDeleteJob.mock
+}
+
+// Set uses given function f to mock the Storage.DeleteJob method
+func (mmDeleteJob *mStorageMockDeleteJob) Set(f func(ctx context.Context, id string) (err error)) *StorageMock {
+	if mmDeleteJob.defaultExpectation != nil {
+		mmDeleteJob.mock.t.Fatalf("Default expectation is already set for the Storage.DeleteJob method")
+	}
+
+	if len(mmDeleteJob.expectations) > 0 {
+		mmDeleteJob.mock.t.Fatalf("Some expectations are already set for the Storage.DeleteJob method")
+	}
+
+	mmDeleteJob.mock.funcDeleteJob = f
+	mmDeleteJob.mock.funcDeleteJobOrigin = minimock.CallerInfo(1)
+	return mmDeleteJob.mock
+}
+
+// When sets expectation for the Storage.DeleteJob which will trigger the result defined by the following
+// Then helper
+func (mmDeleteJob *mStorageMockDeleteJob) When(ctx context.Context, id string) *StorageMockDeleteJobExpectation {
+	if mmDeleteJob.mock.funcDeleteJob != nil {
+		mmDeleteJob.mock.t.Fatalf("StorageMock.DeleteJob mock is already set by Set")
+	}
+
+	expectation := &StorageMockDeleteJobExpectation{
+		mock:               mmDeleteJob.mock,
+		params:             &StorageMockDeleteJobParams{ctx, id},
+		expectationOrigins: StorageMockDeleteJobExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmDeleteJob.expectations = append(mmDeleteJob.expectations, expectation)
+	return expectation
+}
+
+// Then sets up Storage.DeleteJob return parameters for the expectation previously defined by the When method
+func (e *StorageMockDeleteJobExpectation) Then(err error) *StorageMock {
+	e.results = &StorageMockDeleteJobResults{err}
+	return e.mock
+}
+
+// Times sets number of times Storage.DeleteJob should be invoked
+func (mmDeleteJob *mStorageMockDeleteJob) Times(n uint64) *mStorageMockDeleteJob {
+	if n == 0 {
+		mmDeleteJob.mock.t.Fatalf("Times of StorageMock.DeleteJob mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmDeleteJob.expectedInvocations, n)
+	mmDeleteJob.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmDeleteJob
+}
+
+func (mmDeleteJob *mStorageMockDeleteJob) invocationsDone() bool {
+	if len(mmDeleteJob.expectations) == 0 && mmDeleteJob.defaultExpectation == nil && mmDeleteJob.mock.funcDeleteJob == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmDeleteJob.mock.afterDeleteJobCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmDeleteJob.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// DeleteJob implements mm_service.Storage
+func (mmDeleteJob *StorageMock) DeleteJob(ctx context.Context, id string) (err error) {
+	mm_atomic.AddUint64(&mmDeleteJob.beforeDeleteJobCounter, 1)
+	defer mm_atomic.AddUint64(&mmDeleteJob.afterDeleteJobCounter, 1)
+
+	mmDeleteJob.t.Helper()
+
+	if mmDeleteJob.inspectFuncDeleteJob != nil {
+		mmDeleteJob.inspectFuncDeleteJob(ctx, id)
+	}
+
+	mm_params := StorageMockDeleteJobParams{ctx, id}
+
+	// Record call args
+	mmDeleteJob.DeleteJobMock.mutex.Lock()
+	mmDeleteJob.DeleteJobMock.callArgs = append(mmDeleteJob.DeleteJobMock.callArgs, &mm_params)
+	mmDeleteJob.DeleteJobMock.mutex.Unlock()
+
+	for _, e := range mmDeleteJob.DeleteJobMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.err
+		}
+	}
+
+	if mmDeleteJob.DeleteJobMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmDeleteJob.DeleteJobMock.defaultExpectation.Counter, 1)
+		mm_want := mmDeleteJob.DeleteJobMock.defaultExpectation.params
+		mm_want_ptrs := mmDeleteJob.DeleteJobMock.defaultExpectation.paramPtrs
+
+		mm_got := StorageMockDeleteJobParams{ctx, id}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmDeleteJob.t.Errorf("StorageMock.DeleteJob got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmDeleteJob.DeleteJobMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.id != nil && !minimock.Equal(*mm_want_ptrs.id, mm_got.id) {
+				mmDeleteJob.t.Errorf("StorageMock.DeleteJob got unexpected parameter id, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmDeleteJob.DeleteJobMock.defaultExpectation.expectationOrigins.originId, *mm_want_ptrs.id, mm_got.id, minimock.Diff(*mm_want_ptrs.id, mm_got.id))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmDeleteJob.t.Errorf("StorageMock.DeleteJob got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmDeleteJob.DeleteJobMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmDeleteJob.DeleteJobMock.defaultExpectation.results
+		if mm_results == nil {
+			mmDeleteJob.t.Fatal("No results are set for the StorageMock.DeleteJob")
+		}
+		return (*mm_results).err
+	}
+	if mmDeleteJob.funcDeleteJob != nil {
+		return mmDeleteJob.funcDeleteJob(ctx, id)
+	}
+	mmDeleteJob.t.Fatalf("Unexpected call to StorageMock.DeleteJob. %v %v", ctx, id)
+	return
+}
+
+// DeleteJobAfterCounter returns a count of finished StorageMock.DeleteJob invocations
+func (mmDeleteJob *StorageMock) DeleteJobAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmDeleteJob.afterDeleteJobCounter)
+}
+
+// DeleteJobBeforeCounter returns a count of StorageMock.DeleteJob invocations
+func (mmDeleteJob *StorageMock) DeleteJobBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmDeleteJob.beforeDeleteJobCounter)
+}
+
+// Calls returns a list of arguments used in each call to StorageMock.DeleteJob.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmDeleteJob *mStorageMockDeleteJob) Calls() []*StorageMockDeleteJobParams {
+	mmDeleteJob.mutex.RLock()
+
+	argCopy := make([]*StorageMockDeleteJobParams, len(mmDeleteJob.callArgs))
+	copy(argCopy, mmDeleteJob.callArgs)
+
+	mmDeleteJob.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockDeleteJobDone returns true if the count of the DeleteJob invocations corresponds
+// the number of defined expectations
+func (m *StorageMock) MinimockDeleteJobDone() bool {
+	if m.DeleteJobMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.DeleteJobMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.DeleteJobMock.invocationsDone()
+}
+
+// MinimockDeleteJobInspect logs each unmet expectation
+func (m *StorageMock) MinimockDeleteJobInspect() {
+	for _, e := range m.DeleteJobMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to StorageMock.DeleteJob at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterDeleteJobCounter := mm_atomic.LoadUint64(&m.afterDeleteJobCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.DeleteJobMock.defaultExpectation != nil && afterDeleteJobCounter < 1 {
+		if m.DeleteJobMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to StorageMock.DeleteJob at\n%s", m.DeleteJobMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to StorageMock.DeleteJob at\n%s with params: %#v", m.DeleteJobMock.defaultExpectation.expectationOrigins.origin, *m.DeleteJobMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcDeleteJob != nil && afterDeleteJobCounter < 1 {
+		m.t.Errorf("Expected call to StorageMock.DeleteJob at\n%s", m.funcDeleteJobOrigin)
+	}
+
+	if !m.DeleteJobMock.invocationsDone() && afterDeleteJobCounter > 0 {
+		m.t.Errorf("Expected %d calls to StorageMock.DeleteJob at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.DeleteJobMock.expectedInvocations), m.DeleteJobMock.expectedInvocationsOrigin, afterDeleteJobCounter)
+	}
 }
 
 type mStorageMockGetJob struct {
@@ -1445,6 +1797,8 @@ func (m *StorageMock) MinimockSaveMetadataInspect() {
 func (m *StorageMock) MinimockFinish() {
 	m.finishOnce.Do(func() {
 		if !m.minimockDone() {
+			m.MinimockDeleteJobInspect()
+
 			m.MinimockGetJobInspect()
 
 			m.MinimockGetMetadataInspect()
@@ -1475,6 +1829,7 @@ func (m *StorageMock) MinimockWait(timeout mm_time.Duration) {
 func (m *StorageMock) minimockDone() bool {
 	done := true
 	return done &&
+		m.MinimockDeleteJobDone() &&
 		m.MinimockGetJobDone() &&
 		m.MinimockGetMetadataDone() &&
 		m.MinimockSaveJobDone() &&
