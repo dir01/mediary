@@ -15,7 +15,7 @@ func PrepareHTTPServerMux(service *service.Service) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metadata", handleGetMetadata(service, 100*time.Millisecond))
 	mux.HandleFunc("/metadata/long-polling", handleGetMetadata(service, 5*time.Minute))
-	mux.HandleFunc("/jobs/", handleGetJob(service))
+	mux.HandleFunc("/jobs/", handleJobByID(service))
 	mux.HandleFunc("/jobs", handleCreateJob(service))
 	mux.HandleFunc("/", handleDocs())
 	return otelhttp.NewHandler(mux, "mediary",
