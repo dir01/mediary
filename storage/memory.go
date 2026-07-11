@@ -41,6 +41,14 @@ func (s *MemoryStorage) SaveJob(ctx context.Context, job *service.Job) error {
 	return nil
 }
 
+// DeleteJob hard-removes the job. Idempotent: deleting a missing id is a no-op.
+func (s *MemoryStorage) DeleteJob(ctx context.Context, id string) error {
+	s.jobMutex.Lock()
+	defer s.jobMutex.Unlock()
+	delete(s.jobMap, id)
+	return nil
+}
+
 func (s *MemoryStorage) GetMetadata(ctx context.Context, url string) (*service.Metadata, error) {
 	s.metadataMutex.RLock()
 	defer s.metadataMutex.RUnlock()

@@ -2,6 +2,10 @@
 # package ecosystems to update and where the package manifests are located.
 # Please see the documentation for all configuration options:
 # https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
+#
+# Each ecosystem has two groups: one for scheduled version updates and one for
+# security updates. Groups default to applies-to: version-updates, so the
+# security group is needed to bundle vulnerability fixes into a single PR too.
 version: 2
 updates:
   - package-ecosystem: "gomod"
@@ -12,6 +16,11 @@ updates:
       - dependency-type: "direct"
     groups:
       go-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      go-security:
+        applies-to: security-updates
         patterns:
           - "*"
   - package-ecosystem: "docker"
@@ -20,6 +29,11 @@ updates:
       interval: "monthly"
     groups:
       docker-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      docker-security:
+        applies-to: security-updates
         patterns:
           - "*"
   - package-ecosystem: "github-actions"
@@ -28,5 +42,10 @@ updates:
       interval: "monthly"
     groups:
       github-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      github-actions-security:
+        applies-to: security-updates
         patterns:
           - "*"

@@ -1,0 +1,13 @@
+name: "mediary CodeQL config"
+
+# Query exclusions.
+# See: https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/customizing-your-advanced-setup-for-code-scanning#using-queries-in-your-own-repository
+query-filters:
+  # go/request-forgery ("Uncontrolled data used in network request"):
+  # mediary uploads a job's result to a *caller-provided presigned upload URL*.
+  # The destination being caller-controlled is the intended capability, not an
+  # SSRF bug — the URL comes from the trusted client/operator that submitted the
+  # job, and there is no fixed host to allowlist against (any S3-compatible
+  # endpoint, plus localhost in tests). Excluded repo-wide.
+  - exclude:
+      id: go/request-forgery

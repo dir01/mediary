@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/samber/oops"
@@ -19,7 +21,9 @@ import (
 
 var (
 	errUnsupportedJobType = fmt.Errorf("unsupported job type")
-	errJobAlreadyExists   = fmt.Errorf("job already exists")
+	// ErrJobAlreadyExists is returned by CreateJob when a job with the same
+	// identity already exists; the existing job is returned alongside it.
+	ErrJobAlreadyExists = fmt.Errorf("job already exists")
 )
 
 type JobParams struct {
@@ -47,6 +51,10 @@ const JobStatusDownloading = "downloading"
 const JobStatusProcessing = "processing"
 const JobStatusUploading = "uploading"
 const JobStatusComplete = "complete"
+
+// JobStatusCancelled is a terminal status set via CancelJob. It is not produced
+// by the processing flows themselves.
+const JobStatusCancelled = "cancelled"
 
 // CreateJob creates an entry for job in storage and enqueues it for processing in background
 func (svc *Service) CreateJob(ctx context.Context, params *JobParams) (*Job, error) {
@@ -89,7 +97,18 @@ func (svc *Service) CreateJob(ctx context.Context, params *JobParams) (*Job, err
 	} else if existingState != nil {
 		svc.log.Debug("job already exists", slog.String("jobID", jobID))
 		span.SetAttributes(attribute.Bool("job.already_exists", true))
-		return existingState, errJobAlreadyExists
+		// The upload URL is stripped of its query before hashing, so a duplicate
+		// submit carrying a fresh presigned URL (same destination, new signature)
+		// resolves to this same job. Refresh the stored URL so a run that has not
+		// uploaded yet uses the still-valid signature instead of the original job's
+		// (possibly expired) one.
+		if refreshUploadURL(existingState, params) {
+			if err := svc.storage.SaveJob(ctx, existingState); err != nil {
+				svc.log.Error("failed to refresh upload url on existing job", slog.String("jobID", jobID), slog.Any("error", err))
+				span.RecordError(err)
+			}
+		}
+		return existingState, ErrJobAlreadyExists
 	}
 
 	if err := svc.storage.SaveJob(ctx, jobState); err != nil {
@@ -151,9 +170,27 @@ func (svc *Service) onPublishedJob(ctx context.Context, payload []byte) error {
 		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("failed to get job state: %w", err)
 	}
-	if jobState != nil {
-		span.SetAttributes(attribute.String("job.type", jobState.Type))
+	if jobState == nil {
+		// The job was deleted (purged) after being enqueued but before we picked
+		// it up. There is nothing to run — treat it as a successful no-op so the
+		// queue does not retry (and so constructFlow is never handed a nil job,
+		// which would panic). This is the expected path when a job is purged to
+		// free its id for a retry.
+		svc.log.Info("job no longer exists, skipping", slog.String("jobID", jobID))
+		span.SetAttributes(attribute.Bool("job.missing", true))
+		return nil
 	}
+	if jobState.DisplayStatus == JobStatusCancelled {
+		// Cancelled while still queued (before we picked it up). Honor the cancel:
+		// run nothing, so the flow's status writes can't overwrite the cancelled
+		// state and no download/upload happens. This covers the common
+		// cancel-before-execution race that stopRunningJob alone cannot (there is
+		// no running flow yet to cancel).
+		svc.log.Info("job was cancelled before execution, skipping", slog.String("jobID", jobID))
+		span.SetAttributes(attribute.Bool("job.cancelled", true))
+		return nil
+	}
+	span.SetAttributes(attribute.String("job.type", jobState.Type))
 
 	flow, err := svc.constructFlow(jobID, jobState)
 	if err != nil {
@@ -163,8 +200,13 @@ func (svc *Service) onPublishedJob(ctx context.Context, payload []byte) error {
 		return fmt.Errorf("failed to construct flow: %w", err)
 	}
 
+	// Run the flow under a cancelable context registered by job id, so CancelJob
+	// and DeleteJob can stop it mid-flight.
+	flowCtx, cancelFlow := context.WithCancel(ctx)
+	defer svc.beginJob(jobID, cancelFlow)()
+
 	start := time.Now()
-	if err := flow(ctx); err != nil {
+	if err := flow(flowCtx); err != nil {
 		svc.log.Error("failed to execute flow", slog.String("jobID", jobID), slog.Any("error", err))
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -199,11 +241,132 @@ func (svc *Service) constructFlow(jobID string, jobState *Job) (func(ctx context
 	}
 }
 
-// calculateJobId returns a unique identifier for the given job parameters.
-// for a given set of parameters, it will always return the same job id
+// calculateJobId returns a stable identifier for the given job parameters.
+// For a given set of parameters it always returns the same id, which is what
+// makes job creation idempotent (see the duplicate check in CreateJob).
+//
+// The destination "uploadUrl" is normalized to just its path before hashing:
+// it is a presigned S3 URL whose signature and expiry change on every request,
+// so hashing it verbatim would make identical work hash to a different id each
+// time — defeating de-duplication and causing the same download/convert/upload
+// to run again and again (expensive). The path still encodes the destination
+// (bucket + user + key), so genuinely distinct destinations stay distinct.
 func (svc *Service) calculateJobId(params *JobParams) string {
-	// TODO: use stable json serialization, currently there are no guarantees that same params will result in same id
-	bytes, _ := json.Marshal(params)
+	normalized := *params
+	if len(params.Params) > 0 {
+		p := make(map[string]interface{}, len(params.Params))
+		for k, v := range params.Params {
+			if k == "uploadUrl" {
+				if s, ok := v.(string); ok {
+					v = stripURLQuery(s)
+				}
+			}
+			p[k] = v
+		}
+		normalized.Params = p
+	}
+	// encoding/json sorts map keys, so this is stable for a given input.
+	bytes, _ := json.Marshal(&normalized)
 	hash := md5.Sum(bytes)
 	return hex.EncodeToString(hash[:])
+}
+
+// stripURLQuery returns the URL without its query string or fragment.
+func stripURLQuery(raw string) string {
+	if u, err := url.Parse(raw); err == nil {
+		u.RawQuery = ""
+		u.Fragment = ""
+		return u.String()
+	}
+	if i := strings.IndexByte(raw, '?'); i >= 0 {
+		return raw[:i]
+	}
+	return raw
+}
+
+// refreshUploadURL copies the incoming uploadUrl into an existing job's params.
+// Two submits of the same work hash to the same job id even though the presigned
+// uploadUrl's signature/expiry differ (the query is stripped before hashing), so
+// a duplicate carries a fresh, still-valid URL. Returns whether anything changed.
+func refreshUploadURL(existing *Job, incoming *JobParams) bool {
+	newURL, ok := incoming.Params["uploadUrl"].(string)
+	if !ok || newURL == "" {
+		return false
+	}
+	if oldURL, _ := existing.Params["uploadUrl"].(string); oldURL == newURL {
+		return false
+	}
+	if existing.Params == nil {
+		existing.Params = map[string]interface{}{}
+	}
+	existing.Params["uploadUrl"] = newURL
+	return true
+}
+
+// CancelJob marks a job terminally cancelled and stops its flow if it is
+// currently running (its context is cancelled, so the active stage aborts and
+// no further status writes land). It also gives a stuck or never-completing job
+// a terminal state to observe. Returns (nil, nil) when the job does not exist.
+func (svc *Service) CancelJob(ctx context.Context, id string) (*Job, error) {
+	ctx, span := otel.Tracer("github.com/dir01/mediary/service").Start(ctx, "service.CancelJob",
+		trace.WithAttributes(attribute.String("job.id", id)),
+	)
+	defer span.End()
+
+	job, err := svc.storage.GetJob(ctx, id)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+	if job == nil {
+		return nil, nil
+	}
+
+	job.DisplayStatus = JobStatusCancelled
+	if err := svc.storage.SaveJob(ctx, job); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, fmt.Errorf("failed to save cancelled job: %w", err)
+	}
+	svc.stopRunningJob(id)
+	return job, nil
+}
+
+// DeleteJob stops a job's flow if it is running, then hard-removes the record so
+// its content-addressed id is free again: because CreateJob dedupes on row
+// existence (not status), a subsequent create with the same params re-enqueues
+// real work instead of attaching to the old record. This is what makes a "retry"
+// possible for a failed/cancelled job.
+//
+// Stopping the flow first (cancelling its context) is what keeps the delete
+// durable: SaveJob is an upsert, so an un-cancelled flow's next status write
+// would resurrect the row; a cancelled flow's writes fail instead.
+// Returns the deleted job, or (nil, nil) when it does not exist.
+func (svc *Service) DeleteJob(ctx context.Context, id string) (*Job, error) {
+	ctx, span := otel.Tracer("github.com/dir01/mediary/service").Start(ctx, "service.DeleteJob",
+		trace.WithAttributes(attribute.String("job.id", id)),
+	)
+	defer span.End()
+
+	job, err := svc.storage.GetJob(ctx, id)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+	if job == nil {
+		return nil, nil
+	}
+
+	// Stop any in-flight flow first so its status writes fail on the cancelled
+	// context instead of resurrecting the row we are about to delete.
+	svc.stopRunningJob(id)
+
+	if err := svc.storage.DeleteJob(ctx, id); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, fmt.Errorf("failed to delete job: %w", err)
+	}
+	return job, nil
 }

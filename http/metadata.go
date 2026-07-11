@@ -38,12 +38,12 @@ func handleGetMetadata(svc *service.Service, timeout time.Duration) func(http.Re
 			ctx = ctx1
 		}
 
+		// Routing guarantees GET or POST reaches this handler; the two differ only
+		// in where the url lives (query param vs JSON body).
 		var url string
-		switch req.Method {
-		case http.MethodGet:
+		if req.Method == http.MethodGet {
 			url = extractURLParam(req)
-		case http.MethodPost:
-			// read json body
+		} else {
 			var body struct {
 				URL string `json:"url"`
 			}
@@ -52,8 +52,6 @@ func handleGetMetadata(svc *service.Service, timeout time.Duration) func(http.Re
 				return
 			}
 			url = body.URL
-		default:
-			respond(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 		}
 		if url == "" {
 			respond(w, http.StatusBadRequest, errors.New("missing url parameter"))

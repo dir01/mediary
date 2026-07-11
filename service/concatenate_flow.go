@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -140,6 +141,18 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func(ctx context
 				return errCtx.Wrapf(err, "failed to concatenate files")
 			}
 			concatSpan.End()
+
+			// The concatenated result is a temp file we own (~1GB). Always
+			// remove it on the way out so a failed/aborted upload doesn't leak
+			// it into /tmp. Guard the removal to the temp dir where Concatenate's
+			// os.CreateTemp placed it, so a path derived from user input (variant
+			// names) can't escape it and delete something else.
+			defer func() {
+				tmpBase := filepath.Clean(os.TempDir()) + string(filepath.Separator)
+				if cleaned := filepath.Clean(resultFilepath); strings.HasPrefix(cleaned, tmpBase) {
+					_ = os.Remove(cleaned)
+				}
+			}()
 
 			// write ID3 chapter tags into the concatenated file
 			if len(chapters) > 0 {

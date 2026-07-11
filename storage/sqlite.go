@@ -89,6 +89,25 @@ func (s *SQLiteStorage) SaveJob(ctx context.Context, job *service.Job) error {
 	return nil
 }
 
+// DeleteJob hard-removes the job row. Idempotent: deleting a missing id is not
+// an error. Note SaveJob is an upsert, so a still-running flow will re-create
+// the row via updateJobStatus — callers must only delete jobs that are already
+// terminal.
+func (s *SQLiteStorage) DeleteJob(ctx context.Context, id string) error {
+	ctx, span := otel.Tracer("github.com/dir01/mediary/storage").Start(ctx, "storage.DeleteJob",
+		trace.WithAttributes(attribute.String("job.id", id)),
+	)
+	defer span.End()
+
+	_, err := s.db.ExecContext(ctx, `DELETE FROM mediary_jobs WHERE id = ?`, id)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+	return nil
+}
+
 func (s *SQLiteStorage) GetMetadata(ctx context.Context, url string) (*service.Metadata, error) {
 	ctx, span := otel.Tracer("github.com/dir01/mediary/storage").Start(ctx, "storage.GetMetadata",
 		trace.WithAttributes(attribute.String("url", url)),

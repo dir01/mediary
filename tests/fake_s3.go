@@ -15,11 +15,16 @@ import (
 )
 
 func GetS3Client(ctx context.Context, bucketName string) (client *s3.Client, teardown func(), err error) {
+	// Pin an explicit version, not :latest. LocalStack's :latest (and :s3-latest) rolled
+	// forward to Pro-gated builds that refuse to start without a LOCALSTACK_AUTH_TOKEN
+	// (exit code 55 / "image no longer available"), which silently skips every S3 test.
+	// 3.8 is the last widely-used community line that boots token-free.
 	req := testcontainers.ContainerRequest{
-		Image:        "localstack/localstack:latest",
+		Image:        "localstack/localstack:3.8",
 		ExposedPorts: []string{"4566/tcp"},
 		NetworkMode:  testcontainers.Bridge,
-		WaitingFor: wait.ForHTTP("/").WithPort("4566/tcp").WithStatusCodeMatcher(func(status int) bool {
+		Env:          map[string]string{"SERVICES": "s3"},
+		WaitingFor: wait.ForHTTP("/_localstack/health").WithPort("4566/tcp").WithStatusCodeMatcher(func(status int) bool {
 			return status == http.StatusOK
 		}),
 	}

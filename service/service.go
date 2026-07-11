@@ -51,6 +51,7 @@ func NewService(
 		uploader:       uploader,
 		log:            logger,
 		syncChansMap:   make(map[string]chan func()),
+		runningCancels: make(map[string]context.CancelFunc),
 		jobsCreated:    jobsCreated,
 		jobsCompleted:  jobsCompleted,
 		jobDuration:    jobDuration,
@@ -65,6 +66,33 @@ func (svc *Service) Start() {
 
 func (svc *Service) Stop() {
 	svc.jobsQueue.Shutdown()
+}
+
+// beginJob records the cancel func for a job's running flow and returns a cleanup
+// that unregisters it and releases the context. Use as:
+//
+//	defer svc.beginJob(id, cancel)()
+func (svc *Service) beginJob(id string, cancel context.CancelFunc) func() {
+	svc.runningCancelsMu.Lock()
+	svc.runningCancels[id] = cancel
+	svc.runningCancelsMu.Unlock()
+	return func() {
+		svc.runningCancelsMu.Lock()
+		delete(svc.runningCancels, id)
+		svc.runningCancelsMu.Unlock()
+		cancel()
+	}
+}
+
+// stopRunningJob cancels the context of a job's in-flight flow if one is running.
+// No-op when the job is not currently executing.
+func (svc *Service) stopRunningJob(id string) {
+	svc.runningCancelsMu.Lock()
+	cancel := svc.runningCancels[id]
+	svc.runningCancelsMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 type Service struct {
@@ -82,6 +110,14 @@ type Service struct {
 
 	// syncChansMapMutex is used to synchronize access to syncChansMap.
 	syncChansMapMutex sync.Mutex
+
+	// runningCancels holds the cancel func for each job whose flow is currently
+	// executing, keyed by job id. It lets CancelJob/DeleteJob actually stop
+	// in-flight work: cancelling the flow's context aborts its current stage and
+	// makes its subsequent status writes fail on the cancelled context, so a
+	// deleted job can't be resurrected by a lingering flow.
+	runningCancels   map[string]context.CancelFunc
+	runningCancelsMu sync.Mutex
 
 	// OTel metric instruments
 	jobsCreated   metric.Int64Counter
@@ -116,6 +152,7 @@ type Storage interface {
 	SaveMetadata(ctx context.Context, metadata *Metadata) error
 	GetJob(ctx context.Context, id string) (*Job, error)
 	SaveJob(ctx context.Context, job *Job) error
+	DeleteJob(ctx context.Context, id string) error
 }
 
 //go:generate  go tool github.com/gojuno/minimock/v3/cmd/minimock -i MediaProcessor -o ./mocks/media_processor_mock.go -g

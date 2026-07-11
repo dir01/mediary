@@ -337,6 +337,129 @@ To check the status of the job, you can use the '''/jobs/:id''' endpoint.`)
 		}
 	})
 
+	t.Run("cancelling a job", func(t *testing.T) {
+		if s3Client == nil {
+			t.Skip("S3 not available")
+		}
+		docs.InsertText(`### '''DELETE /jobs/:id'''
+
+Changed your mind? A job can be cancelled while it is still running by sending a '''DELETE''' request
+to the '''/jobs/:id''' endpoint. Processing stops and the job's status becomes '''cancelled'''.
+Cancelling a job that does not exist returns a '''404 Not Found'''.`)
+
+		presignClient := s3.NewPresignClient(s3Client)
+		presignResult, err := presignClient.PresignPutObject(context.TODO(), &s3.PutObjectInput{
+			Bucket: aws.String(testBucketName),
+			Key:    aws.String("some-path/some-file.some-ext"),
+		})
+		if err != nil {
+			t.Fatal(fmt.Errorf("failed to presign: %w", err))
+		}
+
+		payload := strings.NewReader(fmt.Sprintf(`{
+	"url": "%s",
+	"type": "concatenate",
+	"params": {
+		"variants": [
+			"chapter1.mp3",
+			"chapter2.mp3"
+		],
+		"audioCodec": "mp3",
+		"uploadUrl": "%s"
+	}
+}`, magnetURL, presignResult.URL))
+
+		var jobID string
+		docs.PerformRequestForDocs(
+			"POST",
+			"/jobs",
+			payload,
+			http.StatusAccepted,
+			func(rr *httptest.ResponseRecorder) {
+				var job struct {
+					ID string `json:"id"`
+				}
+				if err := json.Unmarshal(rr.Body.Bytes(), &job); err != nil {
+					t.Errorf("failed to unmarshal job ID: %s", err)
+				}
+				jobID = job.ID
+			},
+		)
+
+		docs.InsertText(`and then to cancel it:`)
+		docs.PerformRequestForDocs(
+			"DELETE",
+			"/jobs/"+jobID,
+			nil,
+			http.StatusOK,
+			func(rr *httptest.ResponseRecorder) {
+				var job struct {
+					Status string `json:"status"`
+				}
+				if err := json.Unmarshal(rr.Body.Bytes(), &job); err != nil {
+					t.Errorf("failed to unmarshal job status: %s", err)
+				}
+				if job.Status != service.JobStatusCancelled {
+					t.Errorf("expected status %q, got %q", service.JobStatusCancelled, job.Status)
+				}
+			},
+		)
+	})
+
+	t.Run("purging a job", func(t *testing.T) {
+		if s3Client == nil {
+			t.Skip("S3 not available")
+		}
+		docs.InsertText(`### '''DELETE /jobs/:id?purge=true'''
+
+'''DELETE''' with '''?purge=true''' hard-removes the job record instead of just cancelling it.
+Job creation is idempotent on the job's content, so a plain cancel leaves the record in place and
+a re-submit of the same job attaches to it; purging frees the id so an identical '''POST /jobs'''
+re-runs the work from scratch. If the job is still running, it is stopped first.`)
+
+		presignClient := s3.NewPresignClient(s3Client)
+		presignResult, err := presignClient.PresignPutObject(context.TODO(), &s3.PutObjectInput{
+			Bucket: aws.String(testBucketName),
+			Key:    aws.String("some-path/purge-demo.some-ext"),
+		})
+		if err != nil {
+			t.Fatal(fmt.Errorf("failed to presign: %w", err))
+		}
+
+		payload := strings.NewReader(fmt.Sprintf(`{
+	"url": "%s",
+	"type": "concatenate",
+	"params": {
+		"variants": [
+			"chapter1.mp3",
+			"chapter2.mp3"
+		],
+		"audioCodec": "mp3",
+		"uploadUrl": "%s"
+	}
+}`, magnetURL, presignResult.URL))
+
+		var jobID string
+		docs.PerformRequestForDocs(
+			"POST",
+			"/jobs",
+			payload,
+			http.StatusAccepted,
+			func(rr *httptest.ResponseRecorder) {
+				var job struct {
+					ID string `json:"id"`
+				}
+				if err := json.Unmarshal(rr.Body.Bytes(), &job); err != nil {
+					t.Errorf("failed to unmarshal job ID: %s", err)
+				}
+				jobID = job.ID
+			},
+		)
+
+		docs.InsertText(`and then to purge it:`)
+		docs.PerformRequestForDocs("DELETE", "/jobs/"+jobID+"?purge=true", nil, http.StatusOK, nil)
+	})
+
 	t.Run("downloading youtube video", func(t *testing.T) {
 		if s3Client == nil {
 			t.Skip("S3 not available")
