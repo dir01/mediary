@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/dir01/mediary/service"
@@ -13,18 +12,23 @@ import (
 
 func PrepareHTTPServerMux(service *service.Service) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/metadata", handleGetMetadata(service, 100*time.Millisecond))
-	mux.HandleFunc("/metadata/long-polling", handleGetMetadata(service, 5*time.Minute))
-	mux.HandleFunc("/jobs/", handleJobByID(service))
-	mux.HandleFunc("/jobs", handleCreateJob(service))
-	mux.HandleFunc("/", handleDocs())
+	mux.HandleFunc("GET /metadata", handleGetMetadata(service, 100*time.Millisecond))
+	mux.HandleFunc("POST /metadata", handleGetMetadata(service, 100*time.Millisecond))
+	mux.HandleFunc("GET /metadata/long-polling", handleGetMetadata(service, 5*time.Minute))
+	mux.HandleFunc("POST /metadata/long-polling", handleGetMetadata(service, 5*time.Minute))
+	mux.HandleFunc("POST /jobs", handleCreateJob(service))
+	mux.HandleFunc("GET /jobs/{id}", handleGetJob(service))
+	mux.HandleFunc("DELETE /jobs/{id}", handleDeleteJob(service))
+	mux.HandleFunc("GET /", handleDocs())
 	return otelhttp.NewHandler(mux, "mediary",
 		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
-			path := r.URL.Path
-			if strings.HasPrefix(path, "/jobs/") && len(path) > len("/jobs/") {
-				path = "/jobs/:id"
+			// r.Pattern is the matched route template (e.g. "GET /jobs/{id}"),
+			// which is already low-cardinality — exactly what a span name should be.
+			if r.Pattern != "" {
+				return r.Pattern
 			}
-			return r.Method + " " + path
+			// Fallback for requests that matched no pattern (e.g. 404s).
+			return r.Method + " " + r.URL.Path
 		}),
 	)
 }
