@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go build -o /bin/server ./cmd/server
 
-FROM alpine:3.21
+FROM alpine:3.24
 
 RUN apk add --no-cache ffmpeg python3
 
