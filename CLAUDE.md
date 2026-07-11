@@ -44,7 +44,11 @@ and redo the upgrade without it.
 
 ## Go toolchain
 
-`go.mod` pins `go 1.26.5` + `toolchain go1.26.5`; `GOTOOLCHAIN=auto` fetches it on demand.
+`go.mod` targets `go 1.26.4` with **no `toolchain` line**. CI sets up Go via
+`actions/setup-go` with `go-version: 1.26.x` (currently resolves to 1.26.4) and runs under
+`GOTOOLCHAIN=local`, so the `go` directive must not exceed the installed patch — bumping to
+1.26.5 made CI (and any `GOTOOLCHAIN=local` build) fail with "go.mod requires go >= 1.26.5".
+Don't raise it past what `setup-go`'s `1.26.x` resolves to.
 
 ## Build & test
 
