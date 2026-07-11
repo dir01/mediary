@@ -1,7 +1,7 @@
 # mediary
 
-Go service that downloads, converts, and uploads media (magnet/YouTube → mp3 → S3).
-Used by tg-podcastotron. Remote: `git@github.com:dir01/mediary.git`.
+Go service that downloads, converts, and uploads media (magnet/YouTube → mp3 → S3),
+exposed over an HTTP API. Remote: `git@github.com:dir01/mediary.git`.
 
 ## Dependency upgrades — do NOT run `go get -u ./...`
 
@@ -83,3 +83,25 @@ The router (`http/http.go`) uses Go 1.22+ method-based `ServeMux` patterns
 (`POST /jobs`, `GET /jobs/{id}`, `DELETE /jobs/{id}`, `GET|POST /metadata`, …) with
 `req.PathValue("id")`. Span names come from `req.Pattern` (the low-cardinality route
 template like `GET /jobs/{id}`) — never bake concrete IDs into span names.
+
+## Job lifecycle: cancel vs. purge (and why retry needs purge)
+
+Jobs are **content-addressed**: `calculateJobId` hashes the params (upload URL normalized to
+path-only), and `CreateJob` dedupes on **row existence, not status** — if a row with that id
+exists in *any* state, it's returned as-is (`ErrJobAlreadyExists`, 202) and no work is
+re-enqueued. That's what kills the cost loop, but it also means a failed/cancelled job can't be
+retried by re-creating it — the identical params resolve straight back to the dead record.
+
+Two `DELETE /jobs/{id}` modes, and both **stop a running flow** first:
+- **default = cancel** (`CancelJob`): stops the flow if running, flips `DisplayStatus` to
+  `cancelled`, and **keeps the row** (an observable terminal state); does *not* free the id.
+- **`?purge=true` = hard delete** (`DeleteJob` → `storage.DeleteJob`): stops the flow if running,
+  then removes the row, freeing the id so an identical `POST /jobs` re-runs the work. This is the
+  retry primitive.
+
+Each flow runs under a cancelable context registered by job id (`Service.runningCancels`);
+cancel/purge cancel it. That also closes a resurrection race: `SaveJob` is an upsert
+(`INSERT OR REPLACE`), so an *un-cancelled* flow's next `updateJobStatus` would re-create a purged
+row — but a cancelled flow's status writes fail on the cancelled context instead. A job that is
+queued-but-not-yet-running is handled too: `onPublishedJob` treats a missing (purged) job as a
+no-op rather than panicking on a nil record.
