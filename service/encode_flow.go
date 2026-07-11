@@ -44,7 +44,7 @@ func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func(ctx cont
 		)
 		defer span.End()
 
-		ctx, cancel := context.WithTimeout(jobCtx, 10*time.Second)
+		ctx, cancel := context.WithTimeout(jobCtx, 5*time.Second)
 		defer cancel()
 		job, err := svc.storage.GetJob(ctx, jobID)
 		if err != nil {
@@ -54,7 +54,7 @@ func (svc *Service) newUploadOriginalFlow(jobID string, job *Job) (func(ctx cont
 		}
 
 		updateJobStatus := func(status string) {
-			statusCtx, statusCancel := context.WithTimeout(jobCtx, 10*time.Second)
+			statusCtx, statusCancel := context.WithTimeout(jobCtx, 5*time.Second)
 			defer statusCancel()
 			job.DisplayStatus = status
 			if err = svc.storage.SaveJob(statusCtx, job); err != nil {

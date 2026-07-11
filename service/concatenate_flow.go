@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -44,7 +45,7 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func(ctx context
 		)
 		defer span.End()
 
-		ctx, cancel := context.WithTimeout(jobCtx, 10*time.Second)
+		ctx, cancel := context.WithTimeout(jobCtx, 5*time.Second)
 		defer cancel()
 		job, err := svc.storage.GetJob(ctx, jobID)
 		if err != nil {
@@ -57,7 +58,7 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func(ctx context
 
 		updateJobStatus := func(status string) {
 			job.DisplayStatus = status
-			statusCtx, statusCancel := context.WithTimeout(jobCtx, 10*time.Second)
+			statusCtx, statusCancel := context.WithTimeout(jobCtx, 5*time.Second)
 			defer statusCancel()
 			if err = svc.storage.SaveJob(statusCtx, job); err != nil {
 				attrs := append([]any{
@@ -122,7 +123,7 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func(ctx context
 			}
 
 			svc.log.Debug("starting conversion", logAttrs...)
-			concatCtx, concatCancel := context.WithTimeout(jobCtx, 1*time.Hour)
+			concatCtx, concatCancel := context.WithTimeout(jobCtx, 30*time.Minute)
 			defer concatCancel()
 
 			concatCtx, concatSpan := otel.Tracer("github.com/dir01/mediary/service").Start(concatCtx, "service.Concatenate",
@@ -140,6 +141,11 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func(ctx context
 				return errCtx.Wrapf(err, "failed to concatenate files")
 			}
 			concatSpan.End()
+
+			// The concatenated result is a temp file we own (~1GB). Always
+			// remove it on the way out so a failed/aborted upload doesn't leak
+			// it into /tmp.
+			defer func() { _ = os.Remove(resultFilepath) }()
 
 			// write ID3 chapter tags into the concatenated file
 			if len(chapters) > 0 {
