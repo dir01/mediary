@@ -272,6 +272,9 @@ func (svc *Service) recordFailure(ctx context.Context, jobID string, attempt Att
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
 
+	svc.jobWriteMu.Lock()
+	defer svc.jobWriteMu.Unlock()
+
 	job, err := svc.storage.GetJob(saveCtx, jobID)
 	if err != nil || job == nil || job.DisplayStatus == JobStatusCancelled {
 		if err != nil {
@@ -295,6 +298,9 @@ func (svc *Service) recordFailure(ctx context.Context, jobID string, attempt Att
 
 // clearError removes the error of an earlier attempt from a job that is complete.
 func (svc *Service) clearError(ctx context.Context, jobID string) {
+	svc.jobWriteMu.Lock()
+	defer svc.jobWriteMu.Unlock()
+
 	job, err := svc.storage.GetJob(ctx, jobID)
 	if err != nil || job == nil || job.Error == "" {
 		return
@@ -390,6 +396,9 @@ func (svc *Service) CancelJob(ctx context.Context, id string) (*Job, error) {
 	)
 	defer span.End()
 
+	svc.jobWriteMu.Lock()
+	defer svc.jobWriteMu.Unlock()
+
 	job, err := svc.storage.GetJob(ctx, id)
 	if err != nil {
 		span.RecordError(err)
@@ -425,6 +434,9 @@ func (svc *Service) DeleteJob(ctx context.Context, id string) (*Job, error) {
 		trace.WithAttributes(attribute.String("job.id", id)),
 	)
 	defer span.End()
+
+	svc.jobWriteMu.Lock()
+	defer svc.jobWriteMu.Unlock()
 
 	job, err := svc.storage.GetJob(ctx, id)
 	if err != nil {

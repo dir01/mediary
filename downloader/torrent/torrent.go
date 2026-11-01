@@ -141,12 +141,16 @@ func (td *Downloader) Download(ctx context.Context, url string, filepaths []stri
 			td.log.Debug("skipping file", slog.String("filepath", tf.DisplayPath()), slog.String("url", url))
 			continue
 		}
-		td.log.Debug("downloading file", slog.String("filepath", tf.DisplayPath()), slog.String("url", url))
-		tf.Download()
 		files = append(files, tf)
 	}
+	// Check all requested files before a download starts. Otherwise, the files
+	// that exist continue to download after this function returns.
 	if len(files) != len(fpMap) {
 		return nil, fmt.Errorf("torrent has %d of %d requested files", len(files), len(fpMap))
+	}
+	for _, tf := range files {
+		td.log.Debug("downloading file", slog.String("filepath", tf.DisplayPath()), slog.String("url", url))
+		tf.Download()
 	}
 
 	// Wait until each requested file is complete. Stop if the context is done or

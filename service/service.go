@@ -119,6 +119,12 @@ type Service struct {
 	runningCancels   map[string]context.CancelFunc
 	runningCancelsMu sync.Mutex
 
+	// jobWriteMu serializes the read-modify-write of a job record by CancelJob,
+	// DeleteJob, recordFailure and clearError. Without it, a failure write that
+	// starts before a cancel or a delete can overwrite the cancelled status, or
+	// create the deleted row again (SaveJob is an upsert).
+	jobWriteMu sync.Mutex
+
 	// OTel metric instruments
 	jobsCreated   metric.Int64Counter
 	jobsCompleted metric.Int64Counter

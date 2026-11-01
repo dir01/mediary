@@ -81,3 +81,14 @@ func TestDownload_Stall(t *testing.T) {
 		t.Errorf("expected the stall to stop the download before the context deadline")
 	}
 }
+
+func TestDownload_UnknownFile(t *testing.T) {
+	dwn, magnetURL := newDownloader(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, err := dwn.Download(ctx, magnetURL, []string{"01.mp3", "missing.mp3"})
+	if err == nil || !strings.Contains(err.Error(), "torrent has 1 of 2 requested files") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
