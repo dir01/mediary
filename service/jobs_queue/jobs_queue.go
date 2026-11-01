@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/dir01/mediary/service"
 	"github.com/dir01/sqlq"
 	"github.com/samber/oops"
 )
@@ -27,6 +28,7 @@ func NewSQLJobsQueue(db *sql.DB, logger *slog.Logger) (*SQLQ, error) {
 		// Default is 3 retries; every attempt re-downloads and re-concatenates, so
 		// retries are expensive — keep the count modest.
 		sqlq.WithDefaultMaxRetries(5),
+		sqlq.WithLogger(logger),
 		// Default backoff is an uncapped 2^n seconds. Use a larger base with a cap so
 		// transient failures get real spacing without ever scheduling a retry that is
 		// hours/days out.
@@ -34,6 +36,11 @@ func NewSQLJobsQueue(db *sql.DB, logger *slog.Logger) (*SQLQ, error) {
 	)
 	if err != nil {
 		return nil, oops.Wrapf(err, "failed to create sqlq")
+	}
+	// Run applies the queue schema migrations. Do it here, so that a schema
+	// failure stops the start of the server.
+	if err := q.Run(context.Background()); err != nil {
+		return nil, oops.Wrapf(err, "failed to set up sqlq schema")
 	}
 	return &SQLQ{queue: q, logger: logger}, nil
 }
@@ -56,12 +63,15 @@ func retryBackoff(retryNum uint16) time.Duration {
 	return d + time.Duration(rand.Int63n(int64(d)/5+1))
 }
 
-func (s *SQLQ) Run() {
-	s.queue.Run()
-}
+// Run does nothing: NewSQLJobsQueue already applied the schema.
+func (s *SQLQ) Run() {}
 
 func (s *SQLQ) Shutdown() {
-	s.queue.Shutdown()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := s.queue.Shutdown(ctx); err != nil {
+		s.logger.Error("failed to shut down jobs queue", slog.Any("error", err))
+	}
 }
 
 func (s *SQLQ) Publish(ctx context.Context, jobType string, payload any) error {
@@ -73,6 +83,13 @@ func (s *SQLQ) Publish(ctx context.Context, jobType string, payload any) error {
 
 func (s *SQLQ) Subscribe(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error) {
 	err := s.queue.Consume(ctx, jobType, func(ctx context.Context, tx *sql.Tx, payloadBytes []byte) error {
+		if info, ok := sqlq.JobInfoFromContext(ctx); ok {
+			attempt := service.Attempt{Number: int(info.RetryCount) + 1, IsFinal: info.IsFinalAttempt()}
+			if info.MaxRetries >= 0 {
+				attempt.Max = int(info.MaxRetries) + 1
+			}
+			ctx = service.ContextWithAttempt(ctx, attempt)
+		}
 		return f(ctx, payloadBytes)
 	})
 	if err != nil {
