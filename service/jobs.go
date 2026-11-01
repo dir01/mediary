@@ -44,6 +44,13 @@ type Job struct {
 	DisplayStatus       string        `json:"status"`
 	ResultMediaDuration time.Duration `json:"result_media_duration,omitempty"`
 	ResultFileBytes     int64         `json:"result_file_bytes,omitempty"`
+	// Error is the reason of the last failed attempt, for a person to read.
+	// It is empty when no attempt failed or when the job is complete.
+	Error string `json:"error,omitempty"`
+	// Attempt is the number of the current or last attempt. The first attempt is 1.
+	Attempt int `json:"attempt,omitempty"`
+	// MaxAttempts is the maximum number of attempts. 0 means no limit or unknown.
+	MaxAttempts int `json:"max_attempts,omitempty"`
 }
 
 const JobStatusCreated = "created"
@@ -51,6 +58,17 @@ const JobStatusDownloading = "downloading"
 const JobStatusProcessing = "processing"
 const JobStatusUploading = "uploading"
 const JobStatusComplete = "complete"
+
+// JobStatusRetrying means that an attempt failed and the queue will retry the job.
+// Job.Error holds the reason of the failure.
+const JobStatusRetrying = "retrying"
+
+// JobStatusFailed is a terminal status: the last attempt failed and no more
+// retries will occur. Job.Error holds the reason of the failure.
+const JobStatusFailed = "failed"
+
+// maxErrorLen is the maximum length of Job.Error.
+const maxErrorLen = 500
 
 // JobStatusCancelled is a terminal status set via CancelJob. It is not produced
 // by the processing flows themselves.
@@ -192,12 +210,23 @@ func (svc *Service) onPublishedJob(ctx context.Context, payload []byte) error {
 	}
 	span.SetAttributes(attribute.String("job.type", jobState.Type))
 
+	attempt := AttemptFromContext(ctx)
+	span.SetAttributes(attribute.Int("job.attempt", attempt.Number))
+
 	flow, err := svc.constructFlow(jobID, jobState)
 	if err != nil {
 		svc.log.Debug("failed to construct flow", slog.String("jobID", jobID), slog.Any("error", err))
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		return fmt.Errorf("failed to construct flow: %w", err)
+		// The job params are incorrect. A retry cannot help.
+		svc.recordFailure(ctx, jobID, Attempt{Number: attempt.Number, Max: attempt.Max, IsFinal: true}, err)
+		return nil
+	}
+
+	// The flow reads the job from storage, so save the attempt first.
+	jobState.Attempt, jobState.MaxAttempts = attempt.Number, attempt.Max
+	if err := svc.storage.SaveJob(ctx, jobState); err != nil {
+		svc.log.Error("failed to save job attempt, proceeding", slog.String("jobID", jobID), slog.Any("error", err))
 	}
 
 	// Run the flow under a cancelable context registered by job id, so CancelJob
@@ -214,8 +243,15 @@ func (svc *Service) onPublishedJob(ctx context.Context, payload []byte) error {
 			attribute.String("job.type", jobState.Type),
 			attribute.Bool("success", false),
 		))
+		if flowCtx.Err() == nil || ctx.Err() != nil {
+			// The flow failed on its own, or the queue stopped it (job timeout).
+			// If CancelJob or DeleteJob stopped it, only flowCtx is done, and
+			// they already wrote the result.
+			svc.recordFailure(ctx, jobID, attempt, err)
+		}
 		return fmt.Errorf("failed to execute flow: %w", err)
 	}
+	svc.clearError(ctx, jobID)
 
 	svc.jobDuration.Record(ctx, time.Since(start).Seconds(),
 		metric.WithAttributes(attribute.String("job.type", jobState.Type)),
@@ -226,6 +262,53 @@ func (svc *Service) onPublishedJob(ctx context.Context, payload []byte) error {
 	))
 
 	return nil
+}
+
+// recordFailure writes the failure of an attempt to the job: the status becomes
+// JobStatusFailed after the final attempt, and JobStatusRetrying otherwise.
+// It does not change a job that is cancelled or deleted.
+func (svc *Service) recordFailure(ctx context.Context, jobID string, attempt Attempt, failure error) {
+	// ctx can be done (the queue job timeout), but the failure must be written.
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+
+	svc.jobWriteMu.Lock()
+	defer svc.jobWriteMu.Unlock()
+
+	job, err := svc.storage.GetJob(saveCtx, jobID)
+	if err != nil || job == nil || job.DisplayStatus == JobStatusCancelled {
+		if err != nil {
+			svc.log.Error("failed to get job to record failure", slog.String("jobID", jobID), slog.Any("error", err))
+		}
+		return
+	}
+	job.Attempt, job.MaxAttempts = attempt.Number, attempt.Max
+	job.DisplayStatus = JobStatusRetrying
+	if attempt.IsFinal {
+		job.DisplayStatus = JobStatusFailed
+	}
+	job.Error = failure.Error()
+	if len(job.Error) > maxErrorLen {
+		job.Error = job.Error[:maxErrorLen-3] + "..."
+	}
+	if err := svc.storage.SaveJob(saveCtx, job); err != nil {
+		svc.log.Error("failed to record job failure", slog.String("jobID", jobID), slog.Any("error", err))
+	}
+}
+
+// clearError removes the error of an earlier attempt from a job that is complete.
+func (svc *Service) clearError(ctx context.Context, jobID string) {
+	svc.jobWriteMu.Lock()
+	defer svc.jobWriteMu.Unlock()
+
+	job, err := svc.storage.GetJob(ctx, jobID)
+	if err != nil || job == nil || job.Error == "" {
+		return
+	}
+	job.Error = ""
+	if err := svc.storage.SaveJob(ctx, job); err != nil {
+		svc.log.Error("failed to clear job error", slog.String("jobID", jobID), slog.Any("error", err))
+	}
 }
 
 // constructFlow will return a function that will execute the given job.
@@ -313,6 +396,9 @@ func (svc *Service) CancelJob(ctx context.Context, id string) (*Job, error) {
 	)
 	defer span.End()
 
+	svc.jobWriteMu.Lock()
+	defer svc.jobWriteMu.Unlock()
+
 	job, err := svc.storage.GetJob(ctx, id)
 	if err != nil {
 		span.RecordError(err)
@@ -348,6 +434,9 @@ func (svc *Service) DeleteJob(ctx context.Context, id string) (*Job, error) {
 		trace.WithAttributes(attribute.String("job.id", id)),
 	)
 	defer span.End()
+
+	svc.jobWriteMu.Lock()
+	defer svc.jobWriteMu.Unlock()
 
 	job, err := svc.storage.GetJob(ctx, id)
 	if err != nil {

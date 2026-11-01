@@ -341,7 +341,29 @@ To check the status of the job, you can use the '''/jobs/:id''' endpoint.`)
 		if s3Client == nil {
 			t.Skip("S3 not available")
 		}
-		docs.InsertText(`### '''DELETE /jobs/:id'''
+		docs.InsertText(`### Failed jobs
+
+If an attempt fails, the job is retried up to 6 attempts in total. Then these fields show the failure:
+
+- '''status''' is '''retrying''' while a retry is scheduled, and '''failed''' after the final attempt fails. '''failed''' is a terminal status.
+- '''error''' is the reason of the last failed attempt, for a person to read, for example
+  '''failed to download variants: download stalled: no data received in 15m0s: 3 of 35 files complete (46 MB of 512 MB)'''.
+  It is not shown when no attempt failed or when the job is complete.
+- '''attempt''' is the number of the current or last attempt (the first attempt is 1), and '''max_attempts''' is the maximum number of attempts.
+
+A torrent download stops when no data arrives for 15 minutes.
+
+'''''''''
+{
+  "id": "530d5694036ae8dae0ec629a92a867db",
+  "status": "failed",
+  "error": "failed to download variants: download timed out: 3 of 35 files complete (46 MB of 512 MB): context deadline exceeded",
+  "attempt": 6,
+  "max_attempts": 6
+}
+'''''''''
+
+### '''DELETE /jobs/:id'''
 
 Changed your mind? A job can be cancelled while it is still running by sending a '''DELETE''' request
 to the '''/jobs/:id''' endpoint. Processing stops and the job's status becomes '''cancelled'''.
@@ -519,12 +541,17 @@ To download a YouTube video, you need to pass the URL of the video to the '''/jo
 				docs.PerformRequest("GET", "/jobs/"+jobID, nil, http.StatusOK, func(rr *httptest.ResponseRecorder) {
 					var job struct {
 						Status string `json:"status"`
+						Error  string `json:"error"`
 					}
 					err := json.Unmarshal(rr.Body.Bytes(), &job)
 					if err != nil {
 						t.Errorf("failed to unmarshal job ID: %s", err)
 					}
 					if job.Status == service.JobStatusComplete {
+						shouldBreak = true
+					}
+					if job.Status == service.JobStatusFailed {
+						t.Errorf("job %s failed: %s", jobID, job.Error)
 						shouldBreak = true
 					}
 				})

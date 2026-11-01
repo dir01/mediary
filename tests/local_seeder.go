@@ -31,11 +31,23 @@ func MakeMinimalMP3(t *testing.T) []byte {
 	return data
 }
 
+// SeederPieceLength is the piece length of the torrents that the test seeders make.
+const SeederPieceLength = 256 * 1024
+
 // SetupLocalSeeder starts a local torrent seeder with the given files under torrentName/.
 // Returns the seeder client (to pass to downloader.AddBootstrapPeer) and a canonical magnet URL.
 // The magnet URL contains only the infohash — no trackers or x.pe hints — so it is stable
 // across runs. Wire the seeder into the downloader via AddBootstrapPeer for direct peer exchange.
 func SetupLocalSeeder(t *testing.T, torrentName string, files map[string][]byte) (*anacrolixTorrent.Client, string) {
+	t.Helper()
+	return SetupPartialSeeder(t, torrentName, files, nil)
+}
+
+// SetupPartialSeeder is like SetupLocalSeeder, but the seeder does not have the data of
+// the files in missing. The torrent metadata still lists them, so a download of them
+// never completes. To keep the pieces of other files complete, make the size of each
+// file a multiple of SeederPieceLength.
+func SetupPartialSeeder(t *testing.T, torrentName string, files map[string][]byte, missing []string) (*anacrolixTorrent.Client, string) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -49,9 +61,14 @@ func SetupLocalSeeder(t *testing.T, torrentName string, files map[string][]byte)
 		}
 	}
 
-	info := metainfo.Info{PieceLength: 256 * 1024}
+	info := metainfo.Info{PieceLength: SeederPieceLength}
 	if err := info.BuildFromFilePath(contentDir); err != nil {
 		t.Fatalf("SetupLocalSeeder: build metainfo: %v", err)
+	}
+	for _, name := range missing {
+		if err := os.Remove(filepath.Join(contentDir, name)); err != nil {
+			t.Fatalf("SetupPartialSeeder: remove %s: %v", name, err)
+		}
 	}
 	infoBytes, err := bencode.Marshal(info)
 	if err != nil {

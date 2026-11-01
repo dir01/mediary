@@ -282,6 +282,28 @@ $ curl -X GET '/jobs/530d5694036ae8dae0ec629a92a867db'
 ```
 
 
+### Failed jobs
+
+If an attempt fails, the job is retried up to 6 attempts in total. Then these fields show the failure:
+
+- `status` is `retrying` while a retry is scheduled, and `failed` after the final attempt fails. `failed` is a terminal status.
+- `error` is the reason of the last failed attempt, for a person to read, for example
+  `failed to download variants: download stalled: no data received in 15m0s: 3 of 35 files complete (46 MB of 512 MB)`.
+  It is not shown when no attempt failed or when the job is complete.
+- `attempt` is the number of the current or last attempt (the first attempt is 1), and `max_attempts` is the maximum number of attempts.
+
+A torrent download stops when no data arrives for 15 minutes.
+
+```
+{
+  "id": "530d5694036ae8dae0ec629a92a867db",
+  "status": "failed",
+  "error": "failed to download variants: download timed out: 3 of 35 files complete (46 MB of 512 MB): context deadline exceeded",
+  "attempt": 6,
+  "max_attempts": 6
+}
+```
+
 ### `DELETE /jobs/:id`
 
 Changed your mind? A job can be cancelled while it is still running by sending a `DELETE` request

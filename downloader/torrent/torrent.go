@@ -8,7 +8,6 @@ import (
 	"path"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	anacrolixTorrent "github.com/anacrolix/torrent"
@@ -24,7 +23,13 @@ func New(dataDir string, logger *slog.Logger, isDebug bool) (*Downloader, error)
 	if err != nil {
 		return nil, err
 	}
-	d := &Downloader{torrentClient: torrentClient, dataDir: dataDir, log: logger}
+	d := &Downloader{
+		torrentClient: torrentClient,
+		dataDir:       dataDir,
+		log:           logger,
+		stallTimeout:  defaultStallTimeout,
+		pollInterval:  time.Second,
+	}
 	var _ service.Downloader = d
 	return d, nil
 }
@@ -34,6 +39,18 @@ type Downloader struct {
 	dataDir        string
 	log            *slog.Logger
 	bootstrapPeers []*anacrolixTorrent.Client
+
+	// stallTimeout is the maximum time Download waits without new data.
+	stallTimeout time.Duration
+	pollInterval time.Duration
+}
+
+// defaultStallTimeout is the time after which Download stops when no data arrives.
+const defaultStallTimeout = 15 * time.Minute
+
+// SetStallTimeout changes the time after which Download stops when no data arrives.
+func (td *Downloader) SetStallTimeout(d time.Duration) {
+	td.stallTimeout = d
 }
 
 // AddBootstrapPeer registers a torrent client to peer with on every magnet request.
@@ -106,7 +123,9 @@ func (td *Downloader) Download(ctx context.Context, url string, filepaths []stri
 	select {
 	case <-ctx.Done():
 		td.log.Debug("context cancelled", slog.String("url", url), slog.Any("error", ctx.Err()))
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("no torrent metadata received from peers: %w", ctx.Err())
+	case <-time.After(td.stallTimeout):
+		return nil, fmt.Errorf("download stalled: no torrent metadata received from peers in %s", td.stallTimeout)
 	case <-torr.GotInfo():
 		break
 	}
@@ -116,36 +135,60 @@ func (td *Downloader) Download(ctx context.Context, url string, filepaths []stri
 		fpMap[fp] = struct{}{}
 	}
 
-	var wg sync.WaitGroup
+	var files []*anacrolixTorrent.File
 	for _, tf := range torr.Files() {
-		tf := tf
 		if _, exists := fpMap[tf.DisplayPath()]; !exists {
 			td.log.Debug("skipping file", slog.String("filepath", tf.DisplayPath()), slog.String("url", url))
 			continue
-		} else {
-			td.log.Debug("downloading file", slog.String("filepath", tf.DisplayPath()), slog.String("url", url))
+		}
+		files = append(files, tf)
+	}
+	// Check all requested files before a download starts. Otherwise, the files
+	// that exist continue to download after this function returns.
+	if len(files) != len(fpMap) {
+		return nil, fmt.Errorf("torrent has %d of %d requested files", len(files), len(fpMap))
+	}
+	for _, tf := range files {
+		td.log.Debug("downloading file", slog.String("filepath", tf.DisplayPath()), slog.String("url", url))
+		tf.Download()
+	}
 
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				tf.Download()
-				for {
-					select {
-					case <-ctx.Done():
-						tf.SetPriority(anacrolixTorrent.PiecePriorityNone)
-						return
-					case <-time.After(1 * time.Second):
-						td.log.Debug("downloading file", slog.String("filepath", tf.DisplayPath()), slog.String("url", url), slog.Int64("downloaded", tf.BytesCompleted()), slog.Int64("total", tf.Length()))
-						if tf.BytesCompleted() == tf.Length() {
-							return
-						}
-						continue
-					}
-				}
-			}()
+	// Wait until each requested file is complete. Stop if the context is done or
+	// if no new bytes arrive during stallTimeout: a torrent without seeders must
+	// not keep the worker for the full download timeout.
+	lastCompleted := int64(-1)
+	lastProgressAt := time.Now()
+	ticker := time.NewTicker(td.pollInterval)
+	defer ticker.Stop()
+	for {
+		p := progressOf(files)
+		if p.completeFiles == len(files) {
+			break
+		}
+		if p.completedBytes != lastCompleted {
+			lastCompleted = p.completedBytes
+			lastProgressAt = time.Now()
+		}
+		td.log.Debug("downloading files", slog.String("url", url), slog.Int64("downloaded", p.completedBytes), slog.Int64("total", p.totalBytes))
+
+		var failure error
+		if ctx.Err() != nil {
+			failure = fmt.Errorf("download timed out: %s: %w", p, ctx.Err())
+		} else if time.Since(lastProgressAt) >= td.stallTimeout {
+			failure = fmt.Errorf("download stalled: no data received in %s: %s", td.stallTimeout, p)
+		}
+		if failure != nil {
+			for _, tf := range files {
+				tf.SetPriority(anacrolixTorrent.PiecePriorityNone)
+			}
+			return nil, failure
+		}
+
+		select {
+		case <-ctx.Done():
+		case <-ticker.C:
 		}
 	}
-	wg.Wait()
 	td.log.Debug("all files downloaded", slog.String("url", url))
 
 	filepathsMap = make(map[string]string)
@@ -155,4 +198,37 @@ func (td *Downloader) Download(ctx context.Context, url string, filepaths []stri
 	td.log.Debug("filepaths map", slog.String("url", url), slog.Any("filepathsMap", filepathsMap))
 
 	return filepathsMap, nil
+}
+
+type downloadProgress struct {
+	completeFiles  int
+	totalFiles     int
+	completedBytes int64
+	totalBytes     int64
+}
+
+func progressOf(files []*anacrolixTorrent.File) downloadProgress {
+	p := downloadProgress{totalFiles: len(files)}
+	for _, tf := range files {
+		done := tf.BytesCompleted()
+		if done == tf.Length() {
+			p.completeFiles++
+		}
+		p.completedBytes += done
+		p.totalBytes += tf.Length()
+	}
+	return p
+}
+
+func (p downloadProgress) String() string {
+	return fmt.Sprintf("%d of %d files complete (%s of %s)",
+		p.completeFiles, p.totalFiles, formatBytes(p.completedBytes), formatBytes(p.totalBytes))
+}
+
+func formatBytes(n int64) string {
+	const mb = 1024 * 1024
+	if n < mb {
+		return fmt.Sprintf("%d KB", n/1024)
+	}
+	return fmt.Sprintf("%d MB", n/mb)
 }
