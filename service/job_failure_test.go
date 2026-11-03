@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"sync"
@@ -42,7 +43,7 @@ func TestFailedAttemptIsRecorded(t *testing.T) {
 			queue.
 				RunMock.Optional().Set(func() {}).
 				ShutdownMock.Optional().Set(func() {}).
-				SubscribeMock.Set(func(ctx context.Context, jobType string, f func(context.Context, []byte) error) {
+				SubscribeMock.Set(func(ctx context.Context, jobType string, f func(context.Context, []byte) error, _ func(context.Context, *sql.Tx, []byte, service.Attempt, error) error) {
 				handler = f
 			})
 

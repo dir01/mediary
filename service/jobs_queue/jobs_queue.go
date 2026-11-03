@@ -81,18 +81,45 @@ func (s *SQLQ) Publish(ctx context.Context, jobType string, payload any) error {
 	return nil
 }
 
-func (s *SQLQ) Subscribe(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error) {
+func (s *SQLQ) Subscribe(
+	ctx context.Context,
+	jobType string,
+	f func(ctx context.Context, payloadBytes []byte) error,
+	onDeadLetter func(ctx context.Context, tx *sql.Tx, payloadBytes []byte, attempt service.Attempt, failure error) error,
+) {
+	var opts []sqlq.ConsumerOption
+	if onDeadLetter != nil {
+		opts = append(opts, sqlq.WithConsumerOnDeadLetter(
+			func(ctx context.Context, tx *sql.Tx, info sqlq.JobInfo, payload []byte, handlerErr error) error {
+				return onDeadLetter(ctx, tx, payload, deadLetterAttemptOf(info), handlerErr)
+			}))
+	}
 	err := s.queue.Consume(ctx, jobType, func(ctx context.Context, tx *sql.Tx, payloadBytes []byte) error {
 		if info, ok := sqlq.JobInfoFromContext(ctx); ok {
-			attempt := service.Attempt{Number: int(info.RetryCount) + 1, IsFinal: info.IsFinalAttempt()}
-			if info.MaxRetries >= 0 {
-				attempt.Max = int(info.MaxRetries) + 1
-			}
-			ctx = service.ContextWithAttempt(ctx, attempt)
+			ctx = service.ContextWithAttempt(ctx, attemptOf(info))
 		}
 		return f(ctx, payloadBytes)
-	})
+	}, opts...)
 	if err != nil {
 		s.logger.Error("failed to register consumer", slog.String("jobType", jobType), slog.Any("error", err))
 	}
+}
+
+func attemptOf(info sqlq.JobInfo) service.Attempt {
+	attempt := service.Attempt{Number: int(info.RetryCount) + 1, IsFinal: info.IsFinalAttempt()}
+	if info.MaxRetries >= 0 {
+		attempt.Max = int(info.MaxRetries) + 1
+	}
+	return attempt
+}
+
+// deadLetterAttemptOf returns the attempt for a job that has no attempts left. The
+// job used all its attempts, so the number is the maximum.
+func deadLetterAttemptOf(info sqlq.JobInfo) service.Attempt {
+	attempt := attemptOf(info)
+	attempt.IsFinal = true
+	if attempt.Max > 0 {
+		attempt.Number = attempt.Max
+	}
+	return attempt
 }

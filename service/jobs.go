@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/md5"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -262,6 +263,35 @@ func (svc *Service) onPublishedJob(ctx context.Context, payload []byte) error {
 	))
 
 	return nil
+}
+
+// onDeadLetterJob is called by the jobs queue when a job has no attempts left, in the
+// transaction that moves the job to the dead letter queue. It sets the job to
+// JobStatusFailed. This is the only place that writes the result when the worker
+// process stopped during the last attempt (for example, after an OOM kill): then no
+// flow returns, and recordFailure does not run. It does not change a job that is
+// cancelled or deleted.
+func (svc *Service) onDeadLetterJob(ctx context.Context, tx *sql.Tx, payload []byte, attempt Attempt, failure error) error {
+	var jobID string
+	if err := json.Unmarshal(payload, &jobID); err != nil {
+		// A retry cannot help. Let the queue move the job.
+		svc.log.Error("failed to unmarshal dead letter job id", slog.Any("error", err))
+		return nil
+	}
+	return svc.storage.UpdateJobInTx(ctx, tx, jobID, func(job *Job) bool {
+		if job.DisplayStatus == JobStatusCancelled {
+			return false
+		}
+		job.DisplayStatus = JobStatusFailed
+		job.Attempt, job.MaxAttempts = attempt.Number, attempt.Max
+		job.Error = failure.Error()
+		if len(job.Error) > maxErrorLen {
+			job.Error = job.Error[:maxErrorLen-3] + "..."
+		}
+		svc.log.Info("job has no attempts left, marked as failed",
+			slog.String("jobID", jobID), slog.String("error", job.Error))
+		return true
+	})
 }
 
 // recordFailure writes the failure of an attempt to the job: the status becomes

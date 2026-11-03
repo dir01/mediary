@@ -153,3 +153,37 @@ func (s *SQLiteStorage) SaveMetadata(ctx context.Context, metadata *service.Meta
 	}
 	return nil
 }
+
+// UpdateJobInTx reads the job, calls update, and writes the job if update returns true.
+// It uses only tx, so it can run inside a transaction of another component (the jobs
+// queue). It does nothing if the job does not exist.
+func (s *SQLiteStorage) UpdateJobInTx(ctx context.Context, tx *sql.Tx, id string, update func(job *service.Job) bool) error {
+	ctx, span := otel.Tracer("github.com/dir01/mediary/storage").Start(ctx, "storage.UpdateJobInTx",
+		trace.WithAttributes(attribute.String("job.id", id)),
+	)
+	defer span.End()
+
+	var data []byte
+	err := tx.QueryRowContext(ctx, `SELECT data FROM mediary_jobs WHERE id = ?`, id).Scan(&data)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err == nil {
+		job := &service.Job{}
+		if err = json.Unmarshal(data, job); err == nil {
+			if !update(job) {
+				return nil
+			}
+			span.SetAttributes(attribute.String("job.status", job.DisplayStatus))
+			if data, err = json.Marshal(job); err == nil {
+				_, err = tx.ExecContext(ctx, `UPDATE mediary_jobs SET data = ? WHERE id = ?`, data, id)
+			}
+		}
+	}
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+	return nil
+}

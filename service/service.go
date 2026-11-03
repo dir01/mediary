@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -61,7 +62,7 @@ func NewService(
 
 func (svc *Service) Start() {
 	svc.jobsQueue.Run()
-	svc.jobsQueue.Subscribe(context.Background(), "process", svc.onPublishedJob)
+	svc.jobsQueue.Subscribe(context.Background(), "process", svc.onPublishedJob, svc.onDeadLetterJob)
 }
 
 func (svc *Service) Stop() {
@@ -147,7 +148,12 @@ type Downloader interface {
 //go:generate  go tool github.com/gojuno/minimock/v3/cmd/minimock -i JobsQueue -o ./mocks/jobs_queue_mock.go -g
 type JobsQueue interface {
 	Publish(ctx context.Context, jobType string, payload any) error
-	Subscribe(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error)
+	// Subscribe calls f for each job. When a job has no attempts left, it calls
+	// onDeadLetter in the transaction that moves the job to the dead letter queue,
+	// also when the worker process stopped during the last attempt. onDeadLetter
+	// must write only through tx. If it returns an error, the queue tries again later.
+	Subscribe(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error,
+		onDeadLetter func(ctx context.Context, tx *sql.Tx, payloadBytes []byte, attempt Attempt, failure error) error)
 	Shutdown()
 	Run()
 }
@@ -159,6 +165,9 @@ type Storage interface {
 	GetJob(ctx context.Context, id string) (*Job, error)
 	SaveJob(ctx context.Context, job *Job) error
 	DeleteJob(ctx context.Context, id string) error
+	// UpdateJobInTx reads the job, calls update, and writes the job if update returns
+	// true. It uses only tx. It does nothing if the job does not exist.
+	UpdateJobInTx(ctx context.Context, tx *sql.Tx, id string, update func(job *Job) bool) error
 }
 
 //go:generate  go tool github.com/gojuno/minimock/v3/cmd/minimock -i MediaProcessor -o ./mocks/media_processor_mock.go -g

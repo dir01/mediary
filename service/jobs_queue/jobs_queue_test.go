@@ -34,7 +34,7 @@ func TestSQLJobsQueue(t *testing.T) {
 		queue.Subscribe(ctx, "attempt-job-type", func(ctx context.Context, _ []byte) error {
 			attempts <- service.AttemptFromContext(ctx)
 			return nil
-		})
+		}, nil)
 		if err := queue.Publish(ctx, "attempt-job-type", "x"); err != nil {
 			t.Fatalf("error publishing job: %v", err)
 		}
@@ -78,7 +78,7 @@ func TestSQLJobsQueue(t *testing.T) {
 			defer callCountMutex.Unlock()
 			callCount++
 			return nil
-		})
+		}, nil)
 
 		if eventually(20*time.Second, func() bool {
 			callCountMutex.RLock()
@@ -115,7 +115,7 @@ func TestSQLJobsQueue(t *testing.T) {
 				return fmt.Errorf("some error")
 			}
 			return nil
-		})
+		}, nil)
 
 		if eventually(60*time.Second, func() bool {
 			callCountMutex.RLock()

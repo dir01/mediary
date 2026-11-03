@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -58,7 +59,8 @@ func TestDeleteJob(t *testing.T) {
 			storage := mocks.NewStorageMock(mc)
 			queue := mocks.NewJobsQueueMock(mc)
 			queue.
-				SubscribeMock.Optional().Set(func(ctx context.Context, jobType string, f1 func(context.Context, []byte) error) {}).
+				SubscribeMock.Optional().Set(func(ctx context.Context, jobType string, f1 func(context.Context, []byte) error, _ func(context.Context, *sql.Tx, []byte, service.Attempt, error) error) {
+			}).
 				RunMock.Optional().Set(func() {}).
 				PublishMock.Optional().Set(func(ctx context.Context, jobType string, payload any) error { return nil }).
 				ShutdownMock.Optional().Set(func() {})
@@ -131,9 +133,9 @@ func TestCancelStopsRunningFlow(t *testing.T) {
 		RunMock.Optional().Set(func() {}).
 		ShutdownMock.Optional().Set(func() {}).
 		PublishMock.Optional().Set(func(ctx context.Context, jobType string, payload any) error { return nil }).
-		SubscribeMock.Set(func(ctx context.Context, jobType string, f func(context.Context, []byte) error) {
-			handler = f
-		})
+		SubscribeMock.Set(func(ctx context.Context, jobType string, f func(context.Context, []byte) error, _ func(context.Context, *sql.Tx, []byte, service.Attempt, error) error) {
+		handler = f
+	})
 
 	storage.GetJobMock.Set(func(ctx context.Context, id string) (*service.Job, error) { return makeJob(), nil })
 	storage.SaveJobMock.Set(func(ctx context.Context, job *service.Job) error { return nil })
@@ -190,9 +192,9 @@ func TestCancelledJobSkipsExecution(t *testing.T) {
 		RunMock.Optional().Set(func() {}).
 		ShutdownMock.Optional().Set(func() {}).
 		PublishMock.Optional().Set(func(ctx context.Context, jobType string, payload any) error { return nil }).
-		SubscribeMock.Set(func(ctx context.Context, jobType string, f func(context.Context, []byte) error) {
-			handler = f
-		})
+		SubscribeMock.Set(func(ctx context.Context, jobType string, f func(context.Context, []byte) error, _ func(context.Context, *sql.Tx, []byte, service.Attempt, error) error) {
+		handler = f
+	})
 
 	storage.GetJobMock.Set(func(ctx context.Context, id string) (*service.Job, error) {
 		return &service.Job{
