@@ -12,9 +12,15 @@ import (
 
 	anacrolixTorrent "github.com/anacrolix/torrent"
 	"github.com/dir01/mediary/service"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 )
 
 func New(dataDir string, logger *slog.Logger, isDebug bool) (*Downloader, error) {
+	return newDownloader(dataDir, logger, isDebug, otel.GetMeterProvider())
+}
+
+func newDownloader(dataDir string, logger *slog.Logger, isDebug bool, meterProvider metric.MeterProvider) (*Downloader, error) {
 	cfg := anacrolixTorrent.NewDefaultClientConfig()
 	cfg.ListenPort = 0
 	cfg.DataDir = dataDir
@@ -29,6 +35,11 @@ func New(dataDir string, logger *slog.Logger, isDebug bool) (*Downloader, error)
 		log:           logger,
 		stallTimeout:  defaultStallTimeout,
 		pollInterval:  time.Second,
+		downloads:     &downloadRegistry{downloads: make(map[*activeDownload]struct{})},
+	}
+	if err := d.registerMetrics(meterProvider.Meter("github.com/dir01/mediary/downloader/torrent")); err != nil {
+		_ = torrentClient.Close()
+		return nil, err
 	}
 	var _ service.Downloader = d
 	return d, nil
@@ -43,6 +54,9 @@ type Downloader struct {
 	// stallTimeout is the maximum time Download waits without new data.
 	stallTimeout time.Duration
 	pollInterval time.Duration
+
+	// downloads keeps the Download calls that run now, for the metrics callback.
+	downloads *downloadRegistry
 }
 
 // defaultStallTimeout is the time after which Download stops when no data arrives.
@@ -148,6 +162,9 @@ func (td *Downloader) Download(ctx context.Context, url string, filepaths []stri
 	if len(files) != len(fpMap) {
 		return nil, fmt.Errorf("torrent has %d of %d requested files", len(files), len(fpMap))
 	}
+	active := &activeDownload{torr: torr, files: files}
+	td.downloads.add(active)
+	defer td.downloads.remove(active)
 	for _, tf := range files {
 		td.log.Debug("downloading file", slog.String("filepath", tf.DisplayPath()), slog.String("url", url))
 		tf.Download()
