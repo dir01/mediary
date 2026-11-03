@@ -286,3 +286,62 @@ func TestConcatenate_OutputSizeNotLargerThanInputs(t *testing.T) {
 			resultStat.Size(), inputTotal, maxExpected)
 	}
 }
+
+// makeTestMP3WithCover returns an MP3 file with a JPEG cover picture, like the
+// files of many audiobooks.
+func makeTestMP3WithCover(t *testing.T) string {
+	t.Helper()
+	audioFile := makeTestMP3(t, 5.0, "32k")
+	coverFile := filepath.Join(t.TempDir(), "cover.jpg")
+	outFile := filepath.Join(t.TempDir(), "with_cover.mp3")
+	for _, args := range [][]string{
+		{"-y", "-f", "lavfi", "-i", "color=c=red:s=64x64", "-frames:v", "1", coverFile},
+		{"-y", "-i", audioFile, "-i", coverFile, "-map", "0:a", "-map", "1:v", "-c", "copy",
+			"-disposition:v", "attached_pic", outFile},
+	} {
+		if out, err := exec.Command("ffmpeg", args...).CombinedOutput(); err != nil {
+			t.Fatalf("ffmpeg failed to generate test MP3 with cover: %v\n%s", err, out)
+		}
+	}
+	return outFile
+}
+
+// TestConcatenate_CopiesCoverPicture verifies that Concatenate copies the cover
+// picture and does not encode it again. When ffmpeg encodes the cover, the mp3
+// muxer keeps all the audio in memory until the end of the input.
+func TestConcatenate_CopiesCoverPicture(t *testing.T) {
+	file := makeTestMP3WithCover(t)
+	processor := &FFMpegMediaProcessor{log: testLogger}
+
+	for _, audioCodec := range []string{"copy", "mp3"} {
+		t.Run(audioCodec, func(t *testing.T) {
+			resultPath, err := processor.Concatenate(context.Background(), []string{file, file}, audioCodec)
+			if err != nil {
+				t.Fatalf("Concatenate failed: %v", err)
+			}
+			t.Cleanup(func() { _ = os.Remove(resultPath) })
+
+			out, err := exec.Command("ffprobe", "-v", "error",
+				"-show_entries", "stream=codec_type,codec_name",
+				"-of", "csv=p=0", resultPath).Output()
+			if err != nil {
+				t.Fatalf("ffprobe failed: %v", err)
+			}
+			if got, want := string(out), "mp3,audio\nmjpeg,video\n"; got != want {
+				t.Errorf("unexpected streams: got %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// TestConcatenate_WithoutCoverPicture verifies that a file without a cover
+// picture is not an error ("-map 0:v?" is optional).
+func TestConcatenate_WithoutCoverPicture(t *testing.T) {
+	file := makeTestMP3(t, 1.0, "32k")
+	processor := &FFMpegMediaProcessor{log: testLogger}
+	resultPath, err := processor.Concatenate(context.Background(), []string{file, file}, "copy")
+	if err != nil {
+		t.Fatalf("Concatenate failed: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(resultPath) })
+}

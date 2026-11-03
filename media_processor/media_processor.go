@@ -96,7 +96,15 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 	logAttrs = append(logAttrs, slog.String("resultFilepath", resultFilepath))
 	span.SetAttributes(attribute.String("result.filepath", resultFilepath))
 
-	args := []string{"-y", "-i", "concat:" + strings.Join(filepaths, "|"), "-acodec", audioCodec}
+	// Copy the cover picture (if there is one) and do not encode it again. The mp3
+	// muxer keeps all audio packets in memory until it gets the cover picture. An
+	// encoded cover comes only at the end of the input, so memory grows with the
+	// input size: 2.6 GB for 1.1 GB of MP3. A copied cover comes at the start.
+	args := []string{
+		"-y", "-i", "concat:" + strings.Join(filepaths, "|"),
+		"-map", "0:a", "-map", "0:v?", "-c:v", "copy",
+		"-acodec", audioCodec,
+	}
 
 	// When re-encoding (audioCodec != "copy"), probe the source bitrate and
 	// pass it to ffmpeg so the output matches the source quality. Without this,
