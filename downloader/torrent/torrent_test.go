@@ -3,6 +3,7 @@ package torrent_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -90,5 +91,43 @@ func TestDownload_UnknownFile(t *testing.T) {
 	_, err := dwn.Download(ctx, magnetURL, []string{"01.mp3", "missing.mp3"})
 	if err == nil || !strings.Contains(err.Error(), "torrent has 1 of 2 requested files") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestDownload_StaticPeer(t *testing.T) {
+	dwn, err := torrentdownloader.New(t.TempDir(), logger, false)
+	if err != nil {
+		t.Fatalf("failed to create downloader: %v", err)
+	}
+	piece := bytes.Repeat([]byte{1}, tests.SeederPieceLength)
+	seeder, magnetURL := tests.SetupLocalSeeder(t, "static-peer", map[string][]byte{"01.mp3": piece})
+	// Only the static peer address tells the downloader where the seeder is.
+	addrs, err := torrentdownloader.ParseStaticPeers(fmt.Sprintf(" 127.0.0.1:%d ,", seeder.LocalPort()))
+	if err != nil {
+		t.Fatalf("failed to parse static peers: %v", err)
+	}
+	dwn.AddStaticPeers(addrs)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	fps, err := dwn.Download(ctx, magnetURL, []string{"01.mp3"})
+	if err != nil {
+		t.Fatalf("expected success, got: %v", err)
+	}
+	if stat, err := os.Stat(fps["01.mp3"]); err != nil || stat.Size() != tests.SeederPieceLength {
+		t.Errorf("file is not complete: %v", err)
+	}
+}
+
+func TestParseStaticPeers(t *testing.T) {
+	addrs, err := torrentdownloader.ParseStaticPeers("192.0.2.10:6881, [2001:db8::1]:6881")
+	if err != nil || len(addrs) != 2 || addrs[0].String() != "192.0.2.10:6881" || addrs[1].String() != "[2001:db8::1]:6881" {
+		t.Errorf("unexpected result: %v, %v", addrs, err)
+	}
+	if addrs, err := torrentdownloader.ParseStaticPeers(""); err != nil || len(addrs) != 0 {
+		t.Errorf("expected no peers, got: %v, %v", addrs, err)
+	}
+	if _, err := torrentdownloader.ParseStaticPeers("seeder.example:6881"); err == nil {
+		t.Errorf("expected an error for a host name")
 	}
 }
