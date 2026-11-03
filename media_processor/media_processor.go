@@ -229,13 +229,21 @@ func (conv *FFMpegMediaProcessor) AddChapterTags(ctx context.Context, filepath s
 	errCtx := oops.With("filepath", filepath, "chapters", len(chapters))
 	logAttrs := []any{slog.String("filepath", filepath), slog.Int("chapters", len(chapters))}
 
-	tag, err := id3v2.Open(filepath, id3v2.Options{Parse: false})
+	// Parse the existing tag, so that Save keeps its frames: the cover picture (APIC)
+	// that Concatenate copies, and the title, artist and album. Without Parse, Save
+	// writes a tag with only the chapters.
+	tag, err := id3v2.Open(filepath, id3v2.Options{Parse: true})
 	if err != nil {
 		return errCtx.Wrapf(err, "failed to open file for ID3 tagging")
 	}
 	defer func() { _ = tag.Close() }()
 
 	tag.SetVersion(4) // ID3v2.4 — supports UTF-8 text encoding natively
+
+	// Replace the chapters of the input (if there are any): ffmpeg can copy them
+	// from the first file, and they do not apply to the concatenated file.
+	tag.DeleteFrames("CHAP")
+	tag.DeleteFrames("CTOC")
 
 	childIDs := make([]string, 0, len(chapters))
 
