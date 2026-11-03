@@ -23,10 +23,36 @@ func TestDeadLetter_WorkerStoppedDuringLastAttempt(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
 		status       string
+		recordRunID  string // RunID of the stored job
+		payload      any    // payload of the queue entry
 		expectStatus string
 	}{
-		{name: "stuck job becomes failed", status: service.JobStatusProcessing, expectStatus: service.JobStatusFailed},
-		{name: "cancelled job stays cancelled", status: service.JobStatusCancelled, expectStatus: service.JobStatusCancelled},
+		{
+			name:   "stuck job becomes failed",
+			status: service.JobStatusProcessing, recordRunID: "run-1",
+			payload:      map[string]string{"id": "stuck-job", "run_id": "run-1"},
+			expectStatus: service.JobStatusFailed,
+		},
+		{
+			name:         "stuck job from before RunID becomes failed",
+			status:       service.JobStatusProcessing,
+			payload:      "stuck-job",
+			expectStatus: service.JobStatusFailed,
+		},
+		{
+			name:   "cancelled job stays cancelled",
+			status: service.JobStatusCancelled, recordRunID: "run-1",
+			payload:      map[string]string{"id": "stuck-job", "run_id": "run-1"},
+			expectStatus: service.JobStatusCancelled,
+		},
+		{
+			// The job was purged and created again. The entry of the old creation must
+			// not change the new job.
+			name:   "job created again is not changed",
+			status: service.JobStatusComplete, recordRunID: "run-2",
+			payload:      map[string]string{"id": "stuck-job", "run_id": "run-1"},
+			expectStatus: service.JobStatusComplete,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -53,6 +79,7 @@ func TestDeadLetter_WorkerStoppedDuringLastAttempt(t *testing.T) {
 				JobParams:     service.JobParams{URL: "magnet:?xt=urn:btih:deadbeef", Type: "concatenate"},
 				ID:            jobID,
 				DisplayStatus: tc.status,
+				RunID:         tc.recordRunID,
 				Attempt:       6,
 				MaxAttempts:   6,
 			}); err != nil {
@@ -60,7 +87,7 @@ func TestDeadLetter_WorkerStoppedDuringLastAttempt(t *testing.T) {
 			}
 			// Make the state that 6 stopped attempts leave: each attempt start added 1 to
 			// retry_count, and no attempt wrote a result.
-			if err := queue.Publish(ctx, "process", jobID); err != nil {
+			if err := queue.Publish(ctx, "process", tc.payload); err != nil {
 				t.Fatalf("error publishing job: %v", err)
 			}
 			if _, err := db.ExecContext(ctx, `UPDATE sqlq_jobs SET retry_count = 6, last_error = 'signal: killed'`); err != nil {

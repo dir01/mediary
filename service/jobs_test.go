@@ -278,3 +278,94 @@ func TestCreateJobRefreshesUploadURLOnDuplicate(t *testing.T) {
 		t.Errorf("stored job upload url = %q, want refreshed %q", savedURL, newURL)
 	}
 }
+
+// TestCreateJobPublishesRunID verifies that CreateJob gives a new job a RunID and puts
+// the same RunID in the queue entry.
+func TestCreateJobPublishesRunID(t *testing.T) {
+	mc := minimock.NewController(t)
+	storage := mocks.NewStorageMock(mc)
+	queue := mocks.NewJobsQueueMock(mc)
+
+	var saved *service.Job
+	storage.GetJobMock.Set(func(ctx context.Context, id string) (*service.Job, error) { return nil, nil })
+	storage.SaveJobMock.Set(func(ctx context.Context, job *service.Job) error {
+		j := *job
+		saved = &j
+		return nil
+	})
+	var published []byte
+	queue.PublishMock.Set(func(ctx context.Context, jobType string, payload any) error {
+		var err error
+		published, err = json.Marshal(payload)
+		return err
+	})
+
+	svc := service.NewService(mocks.NewDownloaderMock(mc), storage, queue, nil, nil, logger)
+	_, err := svc.CreateJob(context.Background(), &service.JobParams{
+		URL:  "magnet:?xt=urn:btih:deadbeef",
+		Type: "concatenate",
+		Params: map[string]interface{}{
+			"variants":  []interface{}{"file.mp3"},
+			"uploadUrl": "http://example.invalid/upload",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateJob failed: %v", err)
+	}
+	if saved == nil || saved.RunID == "" {
+		t.Fatalf("expected a saved job with a RunID, got %+v", saved)
+	}
+	var msg map[string]string
+	if err := json.Unmarshal(published, &msg); err != nil {
+		t.Fatalf("unexpected payload %s: %v", published, err)
+	}
+	if msg["id"] != saved.ID || msg["run_id"] != saved.RunID {
+		t.Errorf("payload %s does not match job %s run %s", published, saved.ID, saved.RunID)
+	}
+}
+
+// TestProcessJobSkipsEarlierCreation verifies that a queue entry of an earlier creation
+// of a job (purged, then created again) does not run the new job.
+func TestProcessJobSkipsEarlierCreation(t *testing.T) {
+	const jobID = "job-created-again"
+	mc := minimock.NewController(t)
+	dwn := mocks.NewDownloaderMock(mc) // Download intentionally left unconfigured
+	storage := mocks.NewStorageMock(mc)
+	queue := mocks.NewJobsQueueMock(mc)
+
+	var handler func(context.Context, []byte) error
+	queue.
+		RunMock.Optional().Set(func() {}).
+		ShutdownMock.Optional().Set(func() {}).
+		SubscribeMock.Set(func(ctx context.Context, jobType string, f func(context.Context, []byte) error, _ func(context.Context, *sql.Tx, []byte, service.Attempt, error) error) {
+		handler = f
+	})
+	storage.GetJobMock.Set(func(ctx context.Context, id string) (*service.Job, error) {
+		return &service.Job{
+			JobParams: service.JobParams{
+				URL:  "magnet:?xt=urn:btih:deadbeef",
+				Type: "concatenate",
+				Params: map[string]interface{}{
+					"variants":  []interface{}{"file.mp3"},
+					"uploadUrl": "http://example.invalid/upload",
+				},
+			},
+			ID:            jobID,
+			DisplayStatus: service.JobStatusComplete,
+			RunID:         "run-2",
+		}, nil
+	})
+
+	svc := service.NewService(dwn, storage, queue, nil, nil, logger)
+	svc.Start()
+	defer svc.Stop()
+
+	payload, err := json.Marshal(map[string]string{"id": jobID, "run_id": "run-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// If the flow ran, it would call the unconfigured Download mock and fail.
+	if err := handler(context.Background(), payload); err != nil {
+		t.Fatalf("handler returned error for an entry of an earlier creation: %v", err)
+	}
+}
