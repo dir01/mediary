@@ -135,3 +135,27 @@ func TestParseStaticPeers(t *testing.T) {
 		}
 	}
 }
+
+// TestResolveStaticPeers verifies that an IP address is used as it is, with the zone
+// of a link-local IPv6 address, and that a host name is resolved.
+func TestResolveStaticPeers(t *testing.T) {
+	dwn, err := torrentdownloader.New(t.TempDir(), logger, false)
+	if err != nil {
+		t.Fatalf("failed to create downloader: %v", err)
+	}
+	addrs, err := torrentdownloader.ParseStaticPeers("[fe80::1%eth0]:6881, 192.0.2.10:6881, localhost:6882")
+	if err != nil {
+		t.Fatalf("failed to parse static peers: %v", err)
+	}
+	dwn.AddStaticPeers(addrs)
+
+	got := dwn.ResolveStaticPeers(context.Background())
+	if len(got) < 3 || got[0] != "[fe80::1%eth0]:6881" || got[1] != "192.0.2.10:6881" {
+		t.Fatalf("unexpected peers: %v", got)
+	}
+	for _, addr := range got[2:] {
+		if addr != "127.0.0.1:6882" && addr != "[::1]:6882" {
+			t.Errorf("unexpected address for localhost: %v", addr)
+		}
+	}
+}

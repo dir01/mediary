@@ -117,7 +117,7 @@ func (td *Downloader) resolveStaticPeers(ctx context.Context) []anacrolixTorrent
 	for _, addr := range td.staticPeers {
 		host, port, _ := net.SplitHostPort(addr) // ParseStaticPeers validated addr
 		portNum, _ := strconv.ParseUint(port, 10, 16)
-		ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+		ips, err := resolveHost(ctx, host)
 		if err != nil {
 			td.log.Warn("failed to resolve static peer", slog.String("peer", addr), slog.Any("error", err))
 			continue
@@ -131,6 +131,16 @@ func (td *Downloader) resolveStaticPeers(ctx context.Context) []anacrolixTorrent
 		}
 	}
 	return peers
+}
+
+// resolveHost returns the addresses of host. An IP address is used as it is, without
+// a DNS lookup: LookupNetIP removes the zone of an IPv6 address (for example,
+// "fe80::1%eth0"), and a link-local address does not work without its zone.
+func resolveHost(ctx context.Context, host string) ([]netip.Addr, error) {
+	if ip, err := netip.ParseAddr(host); err == nil {
+		return []netip.Addr{ip}, nil
+	}
+	return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 }
 
 func (td *Downloader) addMagnet(ctx context.Context, url string) (*anacrolixTorrent.Torrent, error) {
