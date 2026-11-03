@@ -66,8 +66,11 @@ func retryBackoff(retryNum uint16) time.Duration {
 // Run does nothing: NewSQLJobsQueue already applied the schema.
 func (s *SQLQ) Run() {}
 
+// Shutdown cancels the running handlers and releases the claims of their jobs, so
+// that the next process can take them at once. Its budget is 20s, so that it fits
+// with the other shutdown steps in the 30s that Kubernetes gives a pod.
 func (s *SQLQ) Shutdown() {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	if err := s.queue.Shutdown(ctx); err != nil {
 		s.logger.Error("failed to shut down jobs queue", slog.Any("error", err))
