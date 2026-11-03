@@ -71,6 +71,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("error creating torrent downloader: %v", err)
 	}
+	// TORRENT_STATIC_PEERS is a comma-separated list of "ip:port" peers to add to every torrent
+	staticPeers, err := torrent.ParseStaticPeers(os.Getenv("TORRENT_STATIC_PEERS"))
+	if err != nil {
+		log.Fatalf("error parsing TORRENT_STATIC_PEERS: %v", err)
+	}
+	torrentDownloader.AddStaticPeers(staticPeers)
 
 	// ytdlDownloader downloads YouTube videos (potentially - everything that https://github.com/yt-dlp/yt-dlp  supports)
 	ytdlDownloader, err := ytdlp.New(os.TempDir(), logger)

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/netip"
 	"os"
 	"path"
 	"sort"
@@ -50,6 +52,7 @@ type Downloader struct {
 	dataDir        string
 	log            *slog.Logger
 	bootstrapPeers []*anacrolixTorrent.Client
+	staticPeers    []anacrolixTorrent.PeerInfo
 
 	// stallTimeout is the maximum time Download waits without new data.
 	stallTimeout time.Duration
@@ -73,6 +76,36 @@ func (td *Downloader) AddBootstrapPeer(peer *anacrolixTorrent.Client) {
 	td.bootstrapPeers = append(td.bootstrapPeers, peer)
 }
 
+// AddStaticPeers registers peer addresses to connect to on every magnet request.
+// Use it for a peer that trackers and DHT cannot give: for example, a client on
+// the same LAN behind a NAT that does not support hairpin connections.
+func (td *Downloader) AddStaticPeers(addrs []netip.AddrPort) {
+	for _, addr := range addrs {
+		td.staticPeers = append(td.staticPeers, anacrolixTorrent.PeerInfo{
+			Addr:    net.TCPAddrFromAddrPort(addr),
+			Source:  anacrolixTorrent.PeerSourceDirect,
+			Trusted: true,
+		})
+	}
+}
+
+// ParseStaticPeers parses a comma-separated list of "ip:port" addresses.
+func ParseStaticPeers(s string) ([]netip.AddrPort, error) {
+	var addrs []netip.AddrPort
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		addr, err := netip.ParseAddrPort(part)
+		if err != nil {
+			return nil, fmt.Errorf("invalid static peer %q: %w", part, err)
+		}
+		addrs = append(addrs, addr)
+	}
+	return addrs, nil
+}
+
 func (td *Downloader) addMagnet(url string) (*anacrolixTorrent.Torrent, error) {
 	torr, err := td.torrentClient.AddMagnet(url)
 	if err != nil {
@@ -80,6 +113,9 @@ func (td *Downloader) addMagnet(url string) (*anacrolixTorrent.Torrent, error) {
 	}
 	for _, peer := range td.bootstrapPeers {
 		torr.AddClientPeer(peer)
+	}
+	if len(td.staticPeers) > 0 {
+		torr.AddPeers(td.staticPeers)
 	}
 	return torr, nil
 }
