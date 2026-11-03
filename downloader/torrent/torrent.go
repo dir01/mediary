@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -52,7 +53,7 @@ type Downloader struct {
 	dataDir        string
 	log            *slog.Logger
 	bootstrapPeers []*anacrolixTorrent.Client
-	staticPeers    []anacrolixTorrent.PeerInfo
+	staticPeers    []string // "host:port", resolved by addMagnet
 
 	// stallTimeout is the maximum time Download waits without new data.
 	stallTimeout time.Duration
@@ -76,37 +77,73 @@ func (td *Downloader) AddBootstrapPeer(peer *anacrolixTorrent.Client) {
 	td.bootstrapPeers = append(td.bootstrapPeers, peer)
 }
 
-// AddStaticPeers registers peer addresses to connect to on every magnet request.
-// Use it for a peer that trackers and DHT cannot give: for example, a client on
-// the same LAN behind a NAT that does not support hairpin connections.
-func (td *Downloader) AddStaticPeers(addrs []netip.AddrPort) {
-	for _, addr := range addrs {
-		td.staticPeers = append(td.staticPeers, anacrolixTorrent.PeerInfo{
-			Addr:    net.TCPAddrFromAddrPort(addr),
-			Source:  anacrolixTorrent.PeerSourceDirect,
-			Trusted: true,
-		})
-	}
+// AddStaticPeers registers "host:port" peer addresses to connect to on every magnet
+// request. Use it for a peer that trackers and DHT cannot give: for example, a client
+// on the same LAN behind a NAT that does not support hairpin connections.
+func (td *Downloader) AddStaticPeers(addrs []string) {
+	td.staticPeers = append(td.staticPeers, addrs...)
 }
 
-// ParseStaticPeers parses a comma-separated list of "ip:port" addresses.
-func ParseStaticPeers(s string) ([]netip.AddrPort, error) {
-	var addrs []netip.AddrPort
+// ParseStaticPeers parses a comma-separated list of "host:port" addresses.
+// The host is an IP address or a host name. It does not resolve host names:
+// addMagnet resolves them for each torrent, so an address change has an effect
+// without a restart.
+func ParseStaticPeers(s string) ([]string, error) {
+	var addrs []string
 	for _, part := range strings.Split(s, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
 		}
-		addr, err := netip.ParseAddrPort(part)
+		host, port, err := net.SplitHostPort(part)
 		if err != nil {
 			return nil, fmt.Errorf("invalid static peer %q: %w", part, err)
 		}
-		addrs = append(addrs, addr)
+		if host == "" {
+			return nil, fmt.Errorf("invalid static peer %q: no host", part)
+		}
+		if n, err := strconv.ParseUint(port, 10, 16); err != nil || n == 0 {
+			return nil, fmt.Errorf("invalid static peer %q: invalid port %q", part, port)
+		}
+		addrs = append(addrs, part)
 	}
 	return addrs, nil
 }
 
-func (td *Downloader) addMagnet(url string) (*anacrolixTorrent.Torrent, error) {
+// resolveStaticPeers resolves the static peer addresses. A peer that does not
+// resolve is logged and skipped: trackers and DHT can still find other peers.
+func (td *Downloader) resolveStaticPeers(ctx context.Context) []anacrolixTorrent.PeerInfo {
+	var peers []anacrolixTorrent.PeerInfo
+	for _, addr := range td.staticPeers {
+		host, port, _ := net.SplitHostPort(addr) // ParseStaticPeers validated addr
+		portNum, _ := strconv.ParseUint(port, 10, 16)
+		ips, err := resolveHost(ctx, host)
+		if err != nil {
+			td.log.Warn("failed to resolve static peer", slog.String("peer", addr), slog.Any("error", err))
+			continue
+		}
+		for _, ip := range ips {
+			peers = append(peers, anacrolixTorrent.PeerInfo{
+				Addr:    net.TCPAddrFromAddrPort(netip.AddrPortFrom(ip.Unmap(), uint16(portNum))),
+				Source:  anacrolixTorrent.PeerSourceDirect,
+				Trusted: true,
+			})
+		}
+	}
+	return peers
+}
+
+// resolveHost returns the addresses of host. An IP address is used as it is, without
+// a DNS lookup: LookupNetIP removes the zone of an IPv6 address (for example,
+// "fe80::1%eth0"), and a link-local address does not work without its zone.
+func resolveHost(ctx context.Context, host string) ([]netip.Addr, error) {
+	if ip, err := netip.ParseAddr(host); err == nil {
+		return []netip.Addr{ip}, nil
+	}
+	return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+}
+
+func (td *Downloader) addMagnet(ctx context.Context, url string) (*anacrolixTorrent.Torrent, error) {
 	torr, err := td.torrentClient.AddMagnet(url)
 	if err != nil {
 		return nil, err
@@ -114,8 +151,8 @@ func (td *Downloader) addMagnet(url string) (*anacrolixTorrent.Torrent, error) {
 	for _, peer := range td.bootstrapPeers {
 		torr.AddClientPeer(peer)
 	}
-	if len(td.staticPeers) > 0 {
-		torr.AddPeers(td.staticPeers)
+	if peers := td.resolveStaticPeers(ctx); len(peers) > 0 {
+		torr.AddPeers(peers)
 	}
 	return torr, nil
 }
@@ -125,7 +162,7 @@ func (td *Downloader) AcceptsURL(url string) bool {
 }
 
 func (td *Downloader) GetMetadata(ctx context.Context, url string) (*service.Metadata, error) {
-	torr, err := td.addMagnet(url)
+	torr, err := td.addMagnet(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +201,7 @@ func (td *Downloader) Download(ctx context.Context, url string, filepaths []stri
 		return nil, fmt.Errorf("datadir %s is not a directory", td.dataDir)
 	}
 
-	torr, err := td.addMagnet(url)
+	torr, err := td.addMagnet(ctx, url)
 	if err != nil {
 		td.log.Debug("failed to add magnet", slog.String("url", url), slog.Any("error", err))
 		return nil, err

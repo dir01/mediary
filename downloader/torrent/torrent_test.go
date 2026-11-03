@@ -102,7 +102,8 @@ func TestDownload_StaticPeer(t *testing.T) {
 	piece := bytes.Repeat([]byte{1}, tests.SeederPieceLength)
 	seeder, magnetURL := tests.SetupLocalSeeder(t, "static-peer", map[string][]byte{"01.mp3": piece})
 	// Only the static peer address tells the downloader where the seeder is.
-	addrs, err := torrentdownloader.ParseStaticPeers(fmt.Sprintf(" 127.0.0.1:%d ,", seeder.LocalPort()))
+	// A host name, to prove that the downloader resolves it.
+	addrs, err := torrentdownloader.ParseStaticPeers(fmt.Sprintf(" localhost:%d ,", seeder.LocalPort()))
 	if err != nil {
 		t.Fatalf("failed to parse static peers: %v", err)
 	}
@@ -120,14 +121,41 @@ func TestDownload_StaticPeer(t *testing.T) {
 }
 
 func TestParseStaticPeers(t *testing.T) {
-	addrs, err := torrentdownloader.ParseStaticPeers("192.0.2.10:6881, [2001:db8::1]:6881")
-	if err != nil || len(addrs) != 2 || addrs[0].String() != "192.0.2.10:6881" || addrs[1].String() != "[2001:db8::1]:6881" {
+	addrs, err := torrentdownloader.ParseStaticPeers("192.0.2.10:6881, [2001:db8::1]:6881, seeder.example:6881")
+	want := []string{"192.0.2.10:6881", "[2001:db8::1]:6881", "seeder.example:6881"}
+	if err != nil || strings.Join(addrs, ",") != strings.Join(want, ",") {
 		t.Errorf("unexpected result: %v, %v", addrs, err)
 	}
 	if addrs, err := torrentdownloader.ParseStaticPeers(""); err != nil || len(addrs) != 0 {
 		t.Errorf("expected no peers, got: %v, %v", addrs, err)
 	}
-	if _, err := torrentdownloader.ParseStaticPeers("seeder.example:6881"); err == nil {
-		t.Errorf("expected an error for a host name")
+	for _, bad := range []string{"seeder.example", ":6881", "seeder.example:0", "seeder.example:http", "seeder.example:70000"} {
+		if _, err := torrentdownloader.ParseStaticPeers(bad); err == nil {
+			t.Errorf("expected an error for %q", bad)
+		}
+	}
+}
+
+// TestResolveStaticPeers verifies that an IP address is used as it is, with the zone
+// of a link-local IPv6 address, and that a host name is resolved.
+func TestResolveStaticPeers(t *testing.T) {
+	dwn, err := torrentdownloader.New(t.TempDir(), logger, false)
+	if err != nil {
+		t.Fatalf("failed to create downloader: %v", err)
+	}
+	addrs, err := torrentdownloader.ParseStaticPeers("[fe80::1%eth0]:6881, 192.0.2.10:6881, localhost:6882")
+	if err != nil {
+		t.Fatalf("failed to parse static peers: %v", err)
+	}
+	dwn.AddStaticPeers(addrs)
+
+	got := dwn.ResolveStaticPeers(context.Background())
+	if len(got) < 3 || got[0] != "[fe80::1%eth0]:6881" || got[1] != "192.0.2.10:6881" {
+		t.Fatalf("unexpected peers: %v", got)
+	}
+	for _, addr := range got[2:] {
+		if addr != "127.0.0.1:6882" && addr != "[::1]:6882" {
+			t.Errorf("unexpected address for localhost: %v", addr)
+		}
 	}
 }
