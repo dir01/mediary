@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -275,6 +276,16 @@ func (svc *Service) onPublishedJob(ctx context.Context, payload []byte) error {
 
 	start := time.Now()
 	if err := flow(flowCtx); err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			// The queue is shutting down: it cancels the consumer context, and a job
+			// timeout gives context.DeadlineExceeded instead. The queue releases the
+			// claim and does not count this attempt, so the next process runs the job
+			// again. This is no failure: do not write a result, and keep the status.
+			svc.log.Info("flow stopped by shutdown, the queue runs the job again",
+				slog.String("jobID", jobID), slog.Any("error", err))
+			span.SetAttributes(attribute.Bool("job.stopped_by_shutdown", true))
+			return fmt.Errorf("flow stopped by shutdown: %w", err)
+		}
 		svc.log.Error("failed to execute flow", slog.String("jobID", jobID), slog.Any("error", err))
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
