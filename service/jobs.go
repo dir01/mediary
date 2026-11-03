@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/md5"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/samber/oops"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -51,6 +53,34 @@ type Job struct {
 	Attempt int `json:"attempt,omitempty"`
 	// MaxAttempts is the maximum number of attempts. 0 means no limit or unknown.
 	MaxAttempts int `json:"max_attempts,omitempty"`
+	// RunID identifies this creation of the job. A job that is purged and created
+	// again has the same ID but a new RunID, so a queue entry of the old creation
+	// cannot change the new one. Storage keeps it; the API does not show it.
+	RunID string `json:"-"`
+}
+
+// jobMessage is the payload of a "process" queue entry.
+type jobMessage struct {
+	ID    string `json:"id"`
+	RunID string `json:"run_id"`
+}
+
+// parseJobMessage reads a queue payload. Entries from before RunID existed hold only
+// the job ID as a JSON string; for them, RunID is empty and is not checked.
+func parseJobMessage(payload []byte) (jobMessage, error) {
+	var msg jobMessage
+	if err := json.Unmarshal(payload, &msg.ID); err == nil {
+		return msg, nil
+	}
+	if err := json.Unmarshal(payload, &msg); err != nil || msg.ID == "" {
+		return jobMessage{}, fmt.Errorf("failed to unmarshal job message %q: %w", payload, err)
+	}
+	return msg, nil
+}
+
+// isStaleRun reports whether msg is from an earlier creation of job.
+func (msg jobMessage) isStaleRun(job *Job) bool {
+	return msg.RunID != "" && msg.RunID != job.RunID
 }
 
 const JobStatusCreated = "created"
@@ -97,6 +127,7 @@ func (svc *Service) CreateJob(ctx context.Context, params *JobParams) (*Job, err
 		JobParams:     *params,
 		ID:            jobID,
 		DisplayStatus: JobStatusCreated,
+		RunID:         uuid.NewString(),
 	}
 
 	// rough validation of job params
@@ -137,7 +168,7 @@ func (svc *Service) CreateJob(ctx context.Context, params *JobParams) (*Job, err
 	}
 
 	svc.log.Debug("publishing job", slog.String("jobID", jobID))
-	if err := svc.jobsQueue.Publish(ctx, "process", jobState.ID); err != nil {
+	if err := svc.jobsQueue.Publish(ctx, "process", jobMessage{ID: jobState.ID, RunID: jobState.RunID}); err != nil {
 		svc.log.Debug("failed to publish job", slog.String("jobID", jobID), slog.Any("error", err))
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -169,10 +200,11 @@ func (svc *Service) GetJob(ctx context.Context, id string) (*Job, error) {
 // onPublishedJob is a callback that is invoked when a job is published to the jobs queue
 // actual job is done by the corresponding flow
 func (svc *Service) onPublishedJob(ctx context.Context, payload []byte) error {
-	var jobID string
-	if err := json.Unmarshal(payload, &jobID); err != nil {
-		return fmt.Errorf("failed to unmarshal job id: %w", err)
+	msg, err := parseJobMessage(payload)
+	if err != nil {
+		return err
 	}
+	jobID := msg.ID
 	svc.log.Debug("started onPublishedJob", slog.String("jobID", jobID))
 
 	ctx, span := otel.Tracer("github.com/dir01/mediary/service").Start(
@@ -196,6 +228,13 @@ func (svc *Service) onPublishedJob(ctx context.Context, payload []byte) error {
 		// free its id for a retry.
 		svc.log.Info("job no longer exists, skipping", slog.String("jobID", jobID))
 		span.SetAttributes(attribute.Bool("job.missing", true))
+		return nil
+	}
+	if msg.isStaleRun(jobState) {
+		// The job was purged and created again. The new creation has its own queue
+		// entry, so this entry of the old creation must not run the job again.
+		svc.log.Info("queue entry is from an earlier creation of the job, skipping", slog.String("jobID", jobID))
+		span.SetAttributes(attribute.Bool("job.stale_run", true))
 		return nil
 	}
 	if jobState.DisplayStatus == JobStatusCancelled {
@@ -262,6 +301,35 @@ func (svc *Service) onPublishedJob(ctx context.Context, payload []byte) error {
 	))
 
 	return nil
+}
+
+// onDeadLetterJob is called by the jobs queue when a job has no attempts left, in the
+// transaction that moves the job to the dead letter queue. It sets the job to
+// JobStatusFailed. This is the only place that writes the result when the worker
+// process stopped during the last attempt (for example, after an OOM kill): then no
+// flow returns, and recordFailure does not run. It does not change a job that is
+// cancelled or deleted, or a job that was created again after the queue entry.
+func (svc *Service) onDeadLetterJob(ctx context.Context, tx *sql.Tx, payload []byte, attempt Attempt, failure error) error {
+	msg, err := parseJobMessage(payload)
+	if err != nil {
+		// A retry cannot help. Let the queue move the job.
+		svc.log.Error("failed to read dead letter job", slog.Any("error", err))
+		return nil
+	}
+	return svc.storage.UpdateJobInTx(ctx, tx, msg.ID, func(job *Job) bool {
+		if job.DisplayStatus == JobStatusCancelled || msg.isStaleRun(job) {
+			return false
+		}
+		job.DisplayStatus = JobStatusFailed
+		job.Attempt, job.MaxAttempts = attempt.Number, attempt.Max
+		job.Error = failure.Error()
+		if len(job.Error) > maxErrorLen {
+			job.Error = job.Error[:maxErrorLen-3] + "..."
+		}
+		svc.log.Info("job has no attempts left, marked as failed",
+			slog.String("jobID", msg.ID), slog.String("error", job.Error))
+		return true
+	})
 }
 
 // recordFailure writes the failure of an attempt to the job: the status becomes

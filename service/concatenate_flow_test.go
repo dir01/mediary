@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -27,7 +28,7 @@ func TestConcatenateFlow_GetInfoErrorSkipsChapters(t *testing.T) {
 	upl := mocks.NewUploaderMock(mc)
 
 	var onJob func(ctx context.Context, payloadBytes []byte) error
-	queue.SubscribeMock.Set(func(_ context.Context, _ string, f func(context.Context, []byte) error) {
+	queue.SubscribeMock.Set(func(_ context.Context, _ string, f func(context.Context, []byte) error, _ func(context.Context, *sql.Tx, []byte, service.Attempt, error) error) {
 		onJob = f
 	})
 	queue.RunMock.Set(func() {})
@@ -118,7 +119,7 @@ func TestConcatenateFlow_ChapterTimestamps(t *testing.T) {
 
 	// Capture the queue subscriber callback so we can invoke it directly.
 	var onJob func(ctx context.Context, payloadBytes []byte) error
-	queue.SubscribeMock.Set(func(_ context.Context, _ string, f func(context.Context, []byte) error) {
+	queue.SubscribeMock.Set(func(_ context.Context, _ string, f func(context.Context, []byte) error, _ func(context.Context, *sql.Tx, []byte, service.Attempt, error) error) {
 		onJob = f
 	})
 	queue.RunMock.Set(func() {})

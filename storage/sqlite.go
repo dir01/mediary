@@ -55,8 +55,8 @@ func (s *SQLiteStorage) GetJob(ctx context.Context, id string) (*service.Job, er
 		span.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
-	job := &service.Job{}
-	if err := json.Unmarshal(data, job); err != nil {
+	job, err := unmarshalJob(data)
+	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		return nil, err
@@ -74,7 +74,7 @@ func (s *SQLiteStorage) SaveJob(ctx context.Context, job *service.Job) error {
 	)
 	defer span.End()
 
-	data, err := json.Marshal(job)
+	data, err := marshalJob(job)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -152,4 +152,57 @@ func (s *SQLiteStorage) SaveMetadata(ctx context.Context, metadata *service.Meta
 		return err
 	}
 	return nil
+}
+
+// UpdateJobInTx reads the job, calls update, and writes the job if update returns true.
+// It uses only tx, so it can run inside a transaction of another component (the jobs
+// queue). It does nothing if the job does not exist.
+func (s *SQLiteStorage) UpdateJobInTx(ctx context.Context, tx *sql.Tx, id string, update func(job *service.Job) bool) error {
+	ctx, span := otel.Tracer("github.com/dir01/mediary/storage").Start(ctx, "storage.UpdateJobInTx",
+		trace.WithAttributes(attribute.String("job.id", id)),
+	)
+	defer span.End()
+
+	var data []byte
+	err := tx.QueryRowContext(ctx, `SELECT data FROM mediary_jobs WHERE id = ?`, id).Scan(&data)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err == nil {
+		var job *service.Job
+		if job, err = unmarshalJob(data); err == nil {
+			if !update(job) {
+				return nil
+			}
+			span.SetAttributes(attribute.String("job.status", job.DisplayStatus))
+			if data, err = marshalJob(job); err == nil {
+				_, err = tx.ExecContext(ctx, `UPDATE mediary_jobs SET data = ? WHERE id = ?`, data, id)
+			}
+		}
+	}
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+	return nil
+}
+
+// storedJob is the stored form of a job. It adds the fields that the API does not show.
+type storedJob struct {
+	*service.Job
+	RunID string `json:"run_id,omitempty"`
+}
+
+func marshalJob(job *service.Job) ([]byte, error) {
+	return json.Marshal(storedJob{Job: job, RunID: job.RunID})
+}
+
+func unmarshalJob(data []byte) (*service.Job, error) {
+	stored := storedJob{Job: &service.Job{}}
+	if err := json.Unmarshal(data, &stored); err != nil {
+		return nil, err
+	}
+	stored.Job.RunID = stored.RunID
+	return stored.Job, nil
 }

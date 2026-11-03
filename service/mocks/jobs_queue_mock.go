@@ -4,10 +4,12 @@ package mocks
 
 import (
 	"context"
+	"database/sql"
 	"sync"
 	mm_atomic "sync/atomic"
 	mm_time "time"
 
+	mm_service "github.com/dir01/mediary/service"
 	"github.com/gojuno/minimock/v3"
 )
 
@@ -37,9 +39,9 @@ type JobsQueueMock struct {
 	beforeShutdownCounter uint64
 	ShutdownMock          mJobsQueueMockShutdown
 
-	funcSubscribe          func(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error)
+	funcSubscribe          func(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error, onDeadLetter func(ctx context.Context, tx *sql.Tx, payloadBytes []byte, attempt mm_service.Attempt, failure error) error)
 	funcSubscribeOrigin    string
-	inspectFuncSubscribe   func(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error)
+	inspectFuncSubscribe   func(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error, onDeadLetter func(ctx context.Context, tx *sql.Tx, payloadBytes []byte, attempt mm_service.Attempt, failure error) error)
 	afterSubscribeCounter  uint64
 	beforeSubscribeCounter uint64
 	SubscribeMock          mJobsQueueMockSubscribe
@@ -823,24 +825,27 @@ type JobsQueueMockSubscribeExpectation struct {
 
 // JobsQueueMockSubscribeParams contains parameters of the JobsQueue.Subscribe
 type JobsQueueMockSubscribeParams struct {
-	ctx     context.Context
-	jobType string
-	f       func(ctx context.Context, payloadBytes []byte) error
+	ctx          context.Context
+	jobType      string
+	f            func(ctx context.Context, payloadBytes []byte) error
+	onDeadLetter func(ctx context.Context, tx *sql.Tx, payloadBytes []byte, attempt mm_service.Attempt, failure error) error
 }
 
 // JobsQueueMockSubscribeParamPtrs contains pointers to parameters of the JobsQueue.Subscribe
 type JobsQueueMockSubscribeParamPtrs struct {
-	ctx     *context.Context
-	jobType *string
-	f       *func(ctx context.Context, payloadBytes []byte) error
+	ctx          *context.Context
+	jobType      *string
+	f            *func(ctx context.Context, payloadBytes []byte) error
+	onDeadLetter *func(ctx context.Context, tx *sql.Tx, payloadBytes []byte, attempt mm_service.Attempt, failure error) error
 }
 
 // JobsQueueMockSubscribeOrigins contains origins of expectations of the JobsQueue.Subscribe
 type JobsQueueMockSubscribeExpectationOrigins struct {
-	origin        string
-	originCtx     string
-	originJobType string
-	originF       string
+	origin             string
+	originCtx          string
+	originJobType      string
+	originF            string
+	originOnDeadLetter string
 }
 
 // Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
@@ -854,7 +859,7 @@ func (mmSubscribe *mJobsQueueMockSubscribe) Optional() *mJobsQueueMockSubscribe 
 }
 
 // Expect sets up expected params for JobsQueue.Subscribe
-func (mmSubscribe *mJobsQueueMockSubscribe) Expect(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error) *mJobsQueueMockSubscribe {
+func (mmSubscribe *mJobsQueueMockSubscribe) Expect(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error, onDeadLetter func(ctx context.Context, tx *sql.Tx, payloadBytes []byte, attempt mm_service.Attempt, failure error) error) *mJobsQueueMockSubscribe {
 	if mmSubscribe.mock.funcSubscribe != nil {
 		mmSubscribe.mock.t.Fatalf("JobsQueueMock.Subscribe mock is already set by Set")
 	}
@@ -867,7 +872,7 @@ func (mmSubscribe *mJobsQueueMockSubscribe) Expect(ctx context.Context, jobType 
 		mmSubscribe.mock.t.Fatalf("JobsQueueMock.Subscribe mock is already set by ExpectParams functions")
 	}
 
-	mmSubscribe.defaultExpectation.params = &JobsQueueMockSubscribeParams{ctx, jobType, f}
+	mmSubscribe.defaultExpectation.params = &JobsQueueMockSubscribeParams{ctx, jobType, f, onDeadLetter}
 	mmSubscribe.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
 	for _, e := range mmSubscribe.expectations {
 		if minimock.Equal(e.params, mmSubscribe.defaultExpectation.params) {
@@ -947,8 +952,31 @@ func (mmSubscribe *mJobsQueueMockSubscribe) ExpectFParam3(f func(ctx context.Con
 	return mmSubscribe
 }
 
+// ExpectOnDeadLetterParam4 sets up expected param onDeadLetter for JobsQueue.Subscribe
+func (mmSubscribe *mJobsQueueMockSubscribe) ExpectOnDeadLetterParam4(onDeadLetter func(ctx context.Context, tx *sql.Tx, payloadBytes []byte, attempt mm_service.Attempt, failure error) error) *mJobsQueueMockSubscribe {
+	if mmSubscribe.mock.funcSubscribe != nil {
+		mmSubscribe.mock.t.Fatalf("JobsQueueMock.Subscribe mock is already set by Set")
+	}
+
+	if mmSubscribe.defaultExpectation == nil {
+		mmSubscribe.defaultExpectation = &JobsQueueMockSubscribeExpectation{}
+	}
+
+	if mmSubscribe.defaultExpectation.params != nil {
+		mmSubscribe.mock.t.Fatalf("JobsQueueMock.Subscribe mock is already set by Expect")
+	}
+
+	if mmSubscribe.defaultExpectation.paramPtrs == nil {
+		mmSubscribe.defaultExpectation.paramPtrs = &JobsQueueMockSubscribeParamPtrs{}
+	}
+	mmSubscribe.defaultExpectation.paramPtrs.onDeadLetter = &onDeadLetter
+	mmSubscribe.defaultExpectation.expectationOrigins.originOnDeadLetter = minimock.CallerInfo(1)
+
+	return mmSubscribe
+}
+
 // Inspect accepts an inspector function that has same arguments as the JobsQueue.Subscribe
-func (mmSubscribe *mJobsQueueMockSubscribe) Inspect(f func(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error)) *mJobsQueueMockSubscribe {
+func (mmSubscribe *mJobsQueueMockSubscribe) Inspect(f func(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error, onDeadLetter func(ctx context.Context, tx *sql.Tx, payloadBytes []byte, attempt mm_service.Attempt, failure error) error)) *mJobsQueueMockSubscribe {
 	if mmSubscribe.mock.inspectFuncSubscribe != nil {
 		mmSubscribe.mock.t.Fatalf("Inspect function is already set for JobsQueueMock.Subscribe")
 	}
@@ -973,7 +1001,7 @@ func (mmSubscribe *mJobsQueueMockSubscribe) Return() *JobsQueueMock {
 }
 
 // Set uses given function f to mock the JobsQueue.Subscribe method
-func (mmSubscribe *mJobsQueueMockSubscribe) Set(f func(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error)) *JobsQueueMock {
+func (mmSubscribe *mJobsQueueMockSubscribe) Set(f func(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error, onDeadLetter func(ctx context.Context, tx *sql.Tx, payloadBytes []byte, attempt mm_service.Attempt, failure error) error)) *JobsQueueMock {
 	if mmSubscribe.defaultExpectation != nil {
 		mmSubscribe.mock.t.Fatalf("Default expectation is already set for the JobsQueue.Subscribe method")
 	}
@@ -989,14 +1017,14 @@ func (mmSubscribe *mJobsQueueMockSubscribe) Set(f func(ctx context.Context, jobT
 
 // When sets expectation for the JobsQueue.Subscribe which will trigger the result defined by the following
 // Then helper
-func (mmSubscribe *mJobsQueueMockSubscribe) When(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error) *JobsQueueMockSubscribeExpectation {
+func (mmSubscribe *mJobsQueueMockSubscribe) When(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error, onDeadLetter func(ctx context.Context, tx *sql.Tx, payloadBytes []byte, attempt mm_service.Attempt, failure error) error) *JobsQueueMockSubscribeExpectation {
 	if mmSubscribe.mock.funcSubscribe != nil {
 		mmSubscribe.mock.t.Fatalf("JobsQueueMock.Subscribe mock is already set by Set")
 	}
 
 	expectation := &JobsQueueMockSubscribeExpectation{
 		mock:               mmSubscribe.mock,
-		params:             &JobsQueueMockSubscribeParams{ctx, jobType, f},
+		params:             &JobsQueueMockSubscribeParams{ctx, jobType, f, onDeadLetter},
 		expectationOrigins: JobsQueueMockSubscribeExpectationOrigins{origin: minimock.CallerInfo(1)},
 	}
 	mmSubscribe.expectations = append(mmSubscribe.expectations, expectation)
@@ -1031,17 +1059,17 @@ func (mmSubscribe *mJobsQueueMockSubscribe) invocationsDone() bool {
 }
 
 // Subscribe implements mm_service.JobsQueue
-func (mmSubscribe *JobsQueueMock) Subscribe(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error) {
+func (mmSubscribe *JobsQueueMock) Subscribe(ctx context.Context, jobType string, f func(ctx context.Context, payloadBytes []byte) error, onDeadLetter func(ctx context.Context, tx *sql.Tx, payloadBytes []byte, attempt mm_service.Attempt, failure error) error) {
 	mm_atomic.AddUint64(&mmSubscribe.beforeSubscribeCounter, 1)
 	defer mm_atomic.AddUint64(&mmSubscribe.afterSubscribeCounter, 1)
 
 	mmSubscribe.t.Helper()
 
 	if mmSubscribe.inspectFuncSubscribe != nil {
-		mmSubscribe.inspectFuncSubscribe(ctx, jobType, f)
+		mmSubscribe.inspectFuncSubscribe(ctx, jobType, f, onDeadLetter)
 	}
 
-	mm_params := JobsQueueMockSubscribeParams{ctx, jobType, f}
+	mm_params := JobsQueueMockSubscribeParams{ctx, jobType, f, onDeadLetter}
 
 	// Record call args
 	mmSubscribe.SubscribeMock.mutex.Lock()
@@ -1060,7 +1088,7 @@ func (mmSubscribe *JobsQueueMock) Subscribe(ctx context.Context, jobType string,
 		mm_want := mmSubscribe.SubscribeMock.defaultExpectation.params
 		mm_want_ptrs := mmSubscribe.SubscribeMock.defaultExpectation.paramPtrs
 
-		mm_got := JobsQueueMockSubscribeParams{ctx, jobType, f}
+		mm_got := JobsQueueMockSubscribeParams{ctx, jobType, f, onDeadLetter}
 
 		if mm_want_ptrs != nil {
 
@@ -1079,6 +1107,11 @@ func (mmSubscribe *JobsQueueMock) Subscribe(ctx context.Context, jobType string,
 					mmSubscribe.SubscribeMock.defaultExpectation.expectationOrigins.originF, *mm_want_ptrs.f, mm_got.f, minimock.Diff(*mm_want_ptrs.f, mm_got.f))
 			}
 
+			if mm_want_ptrs.onDeadLetter != nil && !minimock.Equal(*mm_want_ptrs.onDeadLetter, mm_got.onDeadLetter) {
+				mmSubscribe.t.Errorf("JobsQueueMock.Subscribe got unexpected parameter onDeadLetter, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmSubscribe.SubscribeMock.defaultExpectation.expectationOrigins.originOnDeadLetter, *mm_want_ptrs.onDeadLetter, mm_got.onDeadLetter, minimock.Diff(*mm_want_ptrs.onDeadLetter, mm_got.onDeadLetter))
+			}
+
 		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
 			mmSubscribe.t.Errorf("JobsQueueMock.Subscribe got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
 				mmSubscribe.SubscribeMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
@@ -1088,10 +1121,10 @@ func (mmSubscribe *JobsQueueMock) Subscribe(ctx context.Context, jobType string,
 
 	}
 	if mmSubscribe.funcSubscribe != nil {
-		mmSubscribe.funcSubscribe(ctx, jobType, f)
+		mmSubscribe.funcSubscribe(ctx, jobType, f, onDeadLetter)
 		return
 	}
-	mmSubscribe.t.Fatalf("Unexpected call to JobsQueueMock.Subscribe. %v %v %v", ctx, jobType, f)
+	mmSubscribe.t.Fatalf("Unexpected call to JobsQueueMock.Subscribe. %v %v %v %v", ctx, jobType, f, onDeadLetter)
 
 }
 

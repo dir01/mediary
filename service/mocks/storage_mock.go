@@ -4,6 +4,7 @@ package mocks
 
 import (
 	"context"
+	"database/sql"
 	"sync"
 	mm_atomic "sync/atomic"
 	mm_time "time"
@@ -51,6 +52,13 @@ type StorageMock struct {
 	afterSaveMetadataCounter  uint64
 	beforeSaveMetadataCounter uint64
 	SaveMetadataMock          mStorageMockSaveMetadata
+
+	funcUpdateJobInTx          func(ctx context.Context, tx *sql.Tx, id string, update func(job *mm_service.Job) bool) (err error)
+	funcUpdateJobInTxOrigin    string
+	inspectFuncUpdateJobInTx   func(ctx context.Context, tx *sql.Tx, id string, update func(job *mm_service.Job) bool)
+	afterUpdateJobInTxCounter  uint64
+	beforeUpdateJobInTxCounter uint64
+	UpdateJobInTxMock          mStorageMockUpdateJobInTx
 }
 
 // NewStorageMock returns a mock for mm_service.Storage
@@ -75,6 +83,9 @@ func NewStorageMock(t minimock.Tester) *StorageMock {
 
 	m.SaveMetadataMock = mStorageMockSaveMetadata{mock: m}
 	m.SaveMetadataMock.callArgs = []*StorageMockSaveMetadataParams{}
+
+	m.UpdateJobInTxMock = mStorageMockUpdateJobInTx{mock: m}
+	m.UpdateJobInTxMock.callArgs = []*StorageMockUpdateJobInTxParams{}
 
 	t.Cleanup(m.MinimockFinish)
 
@@ -1793,6 +1804,410 @@ func (m *StorageMock) MinimockSaveMetadataInspect() {
 	}
 }
 
+type mStorageMockUpdateJobInTx struct {
+	optional           bool
+	mock               *StorageMock
+	defaultExpectation *StorageMockUpdateJobInTxExpectation
+	expectations       []*StorageMockUpdateJobInTxExpectation
+
+	callArgs []*StorageMockUpdateJobInTxParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// StorageMockUpdateJobInTxExpectation specifies expectation struct of the Storage.UpdateJobInTx
+type StorageMockUpdateJobInTxExpectation struct {
+	mock               *StorageMock
+	params             *StorageMockUpdateJobInTxParams
+	paramPtrs          *StorageMockUpdateJobInTxParamPtrs
+	expectationOrigins StorageMockUpdateJobInTxExpectationOrigins
+	results            *StorageMockUpdateJobInTxResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// StorageMockUpdateJobInTxParams contains parameters of the Storage.UpdateJobInTx
+type StorageMockUpdateJobInTxParams struct {
+	ctx    context.Context
+	tx     *sql.Tx
+	id     string
+	update func(job *mm_service.Job) bool
+}
+
+// StorageMockUpdateJobInTxParamPtrs contains pointers to parameters of the Storage.UpdateJobInTx
+type StorageMockUpdateJobInTxParamPtrs struct {
+	ctx    *context.Context
+	tx     **sql.Tx
+	id     *string
+	update *func(job *mm_service.Job) bool
+}
+
+// StorageMockUpdateJobInTxResults contains results of the Storage.UpdateJobInTx
+type StorageMockUpdateJobInTxResults struct {
+	err error
+}
+
+// StorageMockUpdateJobInTxOrigins contains origins of expectations of the Storage.UpdateJobInTx
+type StorageMockUpdateJobInTxExpectationOrigins struct {
+	origin       string
+	originCtx    string
+	originTx     string
+	originId     string
+	originUpdate string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmUpdateJobInTx *mStorageMockUpdateJobInTx) Optional() *mStorageMockUpdateJobInTx {
+	mmUpdateJobInTx.optional = true
+	return mmUpdateJobInTx
+}
+
+// Expect sets up expected params for Storage.UpdateJobInTx
+func (mmUpdateJobInTx *mStorageMockUpdateJobInTx) Expect(ctx context.Context, tx *sql.Tx, id string, update func(job *mm_service.Job) bool) *mStorageMockUpdateJobInTx {
+	if mmUpdateJobInTx.mock.funcUpdateJobInTx != nil {
+		mmUpdateJobInTx.mock.t.Fatalf("StorageMock.UpdateJobInTx mock is already set by Set")
+	}
+
+	if mmUpdateJobInTx.defaultExpectation == nil {
+		mmUpdateJobInTx.defaultExpectation = &StorageMockUpdateJobInTxExpectation{}
+	}
+
+	if mmUpdateJobInTx.defaultExpectation.paramPtrs != nil {
+		mmUpdateJobInTx.mock.t.Fatalf("StorageMock.UpdateJobInTx mock is already set by ExpectParams functions")
+	}
+
+	mmUpdateJobInTx.defaultExpectation.params = &StorageMockUpdateJobInTxParams{ctx, tx, id, update}
+	mmUpdateJobInTx.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmUpdateJobInTx.expectations {
+		if minimock.Equal(e.params, mmUpdateJobInTx.defaultExpectation.params) {
+			mmUpdateJobInTx.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmUpdateJobInTx.defaultExpectation.params)
+		}
+	}
+
+	return mmUpdateJobInTx
+}
+
+// ExpectCtxParam1 sets up expected param ctx for Storage.UpdateJobInTx
+func (mmUpdateJobInTx *mStorageMockUpdateJobInTx) ExpectCtxParam1(ctx context.Context) *mStorageMockUpdateJobInTx {
+	if mmUpdateJobInTx.mock.funcUpdateJobInTx != nil {
+		mmUpdateJobInTx.mock.t.Fatalf("StorageMock.UpdateJobInTx mock is already set by Set")
+	}
+
+	if mmUpdateJobInTx.defaultExpectation == nil {
+		mmUpdateJobInTx.defaultExpectation = &StorageMockUpdateJobInTxExpectation{}
+	}
+
+	if mmUpdateJobInTx.defaultExpectation.params != nil {
+		mmUpdateJobInTx.mock.t.Fatalf("StorageMock.UpdateJobInTx mock is already set by Expect")
+	}
+
+	if mmUpdateJobInTx.defaultExpectation.paramPtrs == nil {
+		mmUpdateJobInTx.defaultExpectation.paramPtrs = &StorageMockUpdateJobInTxParamPtrs{}
+	}
+	mmUpdateJobInTx.defaultExpectation.paramPtrs.ctx = &ctx
+	mmUpdateJobInTx.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmUpdateJobInTx
+}
+
+// ExpectTxParam2 sets up expected param tx for Storage.UpdateJobInTx
+func (mmUpdateJobInTx *mStorageMockUpdateJobInTx) ExpectTxParam2(tx *sql.Tx) *mStorageMockUpdateJobInTx {
+	if mmUpdateJobInTx.mock.funcUpdateJobInTx != nil {
+		mmUpdateJobInTx.mock.t.Fatalf("StorageMock.UpdateJobInTx mock is already set by Set")
+	}
+
+	if mmUpdateJobInTx.defaultExpectation == nil {
+		mmUpdateJobInTx.defaultExpectation = &StorageMockUpdateJobInTxExpectation{}
+	}
+
+	if mmUpdateJobInTx.defaultExpectation.params != nil {
+		mmUpdateJobInTx.mock.t.Fatalf("StorageMock.UpdateJobInTx mock is already set by Expect")
+	}
+
+	if mmUpdateJobInTx.defaultExpectation.paramPtrs == nil {
+		mmUpdateJobInTx.defaultExpectation.paramPtrs = &StorageMockUpdateJobInTxParamPtrs{}
+	}
+	mmUpdateJobInTx.defaultExpectation.paramPtrs.tx = &tx
+	mmUpdateJobInTx.defaultExpectation.expectationOrigins.originTx = minimock.CallerInfo(1)
+
+	return mmUpdateJobInTx
+}
+
+// ExpectIdParam3 sets up expected param id for Storage.UpdateJobInTx
+func (mmUpdateJobInTx *mStorageMockUpdateJobInTx) ExpectIdParam3(id string) *mStorageMockUpdateJobInTx {
+	if mmUpdateJobInTx.mock.funcUpdateJobInTx != nil {
+		mmUpdateJobInTx.mock.t.Fatalf("StorageMock.UpdateJobInTx mock is already set by Set")
+	}
+
+	if mmUpdateJobInTx.defaultExpectation == nil {
+		mmUpdateJobInTx.defaultExpectation = &StorageMockUpdateJobInTxExpectation{}
+	}
+
+	if mmUpdateJobInTx.defaultExpectation.params != nil {
+		mmUpdateJobInTx.mock.t.Fatalf("StorageMock.UpdateJobInTx mock is already set by Expect")
+	}
+
+	if mmUpdateJobInTx.defaultExpectation.paramPtrs == nil {
+		mmUpdateJobInTx.defaultExpectation.paramPtrs = &StorageMockUpdateJobInTxParamPtrs{}
+	}
+	mmUpdateJobInTx.defaultExpectation.paramPtrs.id = &id
+	mmUpdateJobInTx.defaultExpectation.expectationOrigins.originId = minimock.CallerInfo(1)
+
+	return mmUpdateJobInTx
+}
+
+// ExpectUpdateParam4 sets up expected param update for Storage.UpdateJobInTx
+func (mmUpdateJobInTx *mStorageMockUpdateJobInTx) ExpectUpdateParam4(update func(job *mm_service.Job) bool) *mStorageMockUpdateJobInTx {
+	if mmUpdateJobInTx.mock.funcUpdateJobInTx != nil {
+		mmUpdateJobInTx.mock.t.Fatalf("StorageMock.UpdateJobInTx mock is already set by Set")
+	}
+
+	if mmUpdateJobInTx.defaultExpectation == nil {
+		mmUpdateJobInTx.defaultExpectation = &StorageMockUpdateJobInTxExpectation{}
+	}
+
+	if mmUpdateJobInTx.defaultExpectation.params != nil {
+		mmUpdateJobInTx.mock.t.Fatalf("StorageMock.UpdateJobInTx mock is already set by Expect")
+	}
+
+	if mmUpdateJobInTx.defaultExpectation.paramPtrs == nil {
+		mmUpdateJobInTx.defaultExpectation.paramPtrs = &StorageMockUpdateJobInTxParamPtrs{}
+	}
+	mmUpdateJobInTx.defaultExpectation.paramPtrs.update = &update
+	mmUpdateJobInTx.defaultExpectation.expectationOrigins.originUpdate = minimock.CallerInfo(1)
+
+	return mmUpdateJobInTx
+}
+
+// Inspect accepts an inspector function that has same arguments as the Storage.UpdateJobInTx
+func (mmUpdateJobInTx *mStorageMockUpdateJobInTx) Inspect(f func(ctx context.Context, tx *sql.Tx, id string, update func(job *mm_service.Job) bool)) *mStorageMockUpdateJobInTx {
+	if mmUpdateJobInTx.mock.inspectFuncUpdateJobInTx != nil {
+		mmUpdateJobInTx.mock.t.Fatalf("Inspect function is already set for StorageMock.UpdateJobInTx")
+	}
+
+	mmUpdateJobInTx.mock.inspectFuncUpdateJobInTx = f
+
+	return mmUpdateJobInTx
+}
+
+// Return sets up results that will be returned by Storage.UpdateJobInTx
+func (mmUpdateJobInTx *mStorageMockUpdateJobInTx) Return(err error) *StorageMock {
+	if mmUpdateJobInTx.mock.funcUpdateJobInTx != nil {
+		mmUpdateJobInTx.mock.t.Fatalf("StorageMock.UpdateJobInTx mock is already set by Set")
+	}
+
+	if mmUpdateJobInTx.defaultExpectation == nil {
+		mmUpdateJobInTx.defaultExpectation = &StorageMockUpdateJobInTxExpectation{mock: mmUpdateJobInTx.mock}
+	}
+	mmUpdateJobInTx.defaultExpectation.results = &StorageMockUpdateJobInTxResults{err}
+	mmUpdateJobInTx.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmUpdateJobInTx.mock
+}
+
+// Set uses given function f to mock the Storage.UpdateJobInTx method
+func (mmUpdateJobInTx *mStorageMockUpdateJobInTx) Set(f func(ctx context.Context, tx *sql.Tx, id string, update func(job *mm_service.Job) bool) (err error)) *StorageMock {
+	if mmUpdateJobInTx.defaultExpectation != nil {
+		mmUpdateJobInTx.mock.t.Fatalf("Default expectation is already set for the Storage.UpdateJobInTx method")
+	}
+
+	if len(mmUpdateJobInTx.expectations) > 0 {
+		mmUpdateJobInTx.mock.t.Fatalf("Some expectations are already set for the Storage.UpdateJobInTx method")
+	}
+
+	mmUpdateJobInTx.mock.funcUpdateJobInTx = f
+	mmUpdateJobInTx.mock.funcUpdateJobInTxOrigin = minimock.CallerInfo(1)
+	return mmUpdateJobInTx.mock
+}
+
+// When sets expectation for the Storage.UpdateJobInTx which will trigger the result defined by the following
+// Then helper
+func (mmUpdateJobInTx *mStorageMockUpdateJobInTx) When(ctx context.Context, tx *sql.Tx, id string, update func(job *mm_service.Job) bool) *StorageMockUpdateJobInTxExpectation {
+	if mmUpdateJobInTx.mock.funcUpdateJobInTx != nil {
+		mmUpdateJobInTx.mock.t.Fatalf("StorageMock.UpdateJobInTx mock is already set by Set")
+	}
+
+	expectation := &StorageMockUpdateJobInTxExpectation{
+		mock:               mmUpdateJobInTx.mock,
+		params:             &StorageMockUpdateJobInTxParams{ctx, tx, id, update},
+		expectationOrigins: StorageMockUpdateJobInTxExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmUpdateJobInTx.expectations = append(mmUpdateJobInTx.expectations, expectation)
+	return expectation
+}
+
+// Then sets up Storage.UpdateJobInTx return parameters for the expectation previously defined by the When method
+func (e *StorageMockUpdateJobInTxExpectation) Then(err error) *StorageMock {
+	e.results = &StorageMockUpdateJobInTxResults{err}
+	return e.mock
+}
+
+// Times sets number of times Storage.UpdateJobInTx should be invoked
+func (mmUpdateJobInTx *mStorageMockUpdateJobInTx) Times(n uint64) *mStorageMockUpdateJobInTx {
+	if n == 0 {
+		mmUpdateJobInTx.mock.t.Fatalf("Times of StorageMock.UpdateJobInTx mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmUpdateJobInTx.expectedInvocations, n)
+	mmUpdateJobInTx.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmUpdateJobInTx
+}
+
+func (mmUpdateJobInTx *mStorageMockUpdateJobInTx) invocationsDone() bool {
+	if len(mmUpdateJobInTx.expectations) == 0 && mmUpdateJobInTx.defaultExpectation == nil && mmUpdateJobInTx.mock.funcUpdateJobInTx == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmUpdateJobInTx.mock.afterUpdateJobInTxCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmUpdateJobInTx.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// UpdateJobInTx implements mm_service.Storage
+func (mmUpdateJobInTx *StorageMock) UpdateJobInTx(ctx context.Context, tx *sql.Tx, id string, update func(job *mm_service.Job) bool) (err error) {
+	mm_atomic.AddUint64(&mmUpdateJobInTx.beforeUpdateJobInTxCounter, 1)
+	defer mm_atomic.AddUint64(&mmUpdateJobInTx.afterUpdateJobInTxCounter, 1)
+
+	mmUpdateJobInTx.t.Helper()
+
+	if mmUpdateJobInTx.inspectFuncUpdateJobInTx != nil {
+		mmUpdateJobInTx.inspectFuncUpdateJobInTx(ctx, tx, id, update)
+	}
+
+	mm_params := StorageMockUpdateJobInTxParams{ctx, tx, id, update}
+
+	// Record call args
+	mmUpdateJobInTx.UpdateJobInTxMock.mutex.Lock()
+	mmUpdateJobInTx.UpdateJobInTxMock.callArgs = append(mmUpdateJobInTx.UpdateJobInTxMock.callArgs, &mm_params)
+	mmUpdateJobInTx.UpdateJobInTxMock.mutex.Unlock()
+
+	for _, e := range mmUpdateJobInTx.UpdateJobInTxMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.err
+		}
+	}
+
+	if mmUpdateJobInTx.UpdateJobInTxMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmUpdateJobInTx.UpdateJobInTxMock.defaultExpectation.Counter, 1)
+		mm_want := mmUpdateJobInTx.UpdateJobInTxMock.defaultExpectation.params
+		mm_want_ptrs := mmUpdateJobInTx.UpdateJobInTxMock.defaultExpectation.paramPtrs
+
+		mm_got := StorageMockUpdateJobInTxParams{ctx, tx, id, update}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmUpdateJobInTx.t.Errorf("StorageMock.UpdateJobInTx got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmUpdateJobInTx.UpdateJobInTxMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.tx != nil && !minimock.Equal(*mm_want_ptrs.tx, mm_got.tx) {
+				mmUpdateJobInTx.t.Errorf("StorageMock.UpdateJobInTx got unexpected parameter tx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmUpdateJobInTx.UpdateJobInTxMock.defaultExpectation.expectationOrigins.originTx, *mm_want_ptrs.tx, mm_got.tx, minimock.Diff(*mm_want_ptrs.tx, mm_got.tx))
+			}
+
+			if mm_want_ptrs.id != nil && !minimock.Equal(*mm_want_ptrs.id, mm_got.id) {
+				mmUpdateJobInTx.t.Errorf("StorageMock.UpdateJobInTx got unexpected parameter id, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmUpdateJobInTx.UpdateJobInTxMock.defaultExpectation.expectationOrigins.originId, *mm_want_ptrs.id, mm_got.id, minimock.Diff(*mm_want_ptrs.id, mm_got.id))
+			}
+
+			if mm_want_ptrs.update != nil && !minimock.Equal(*mm_want_ptrs.update, mm_got.update) {
+				mmUpdateJobInTx.t.Errorf("StorageMock.UpdateJobInTx got unexpected parameter update, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmUpdateJobInTx.UpdateJobInTxMock.defaultExpectation.expectationOrigins.originUpdate, *mm_want_ptrs.update, mm_got.update, minimock.Diff(*mm_want_ptrs.update, mm_got.update))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmUpdateJobInTx.t.Errorf("StorageMock.UpdateJobInTx got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmUpdateJobInTx.UpdateJobInTxMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmUpdateJobInTx.UpdateJobInTxMock.defaultExpectation.results
+		if mm_results == nil {
+			mmUpdateJobInTx.t.Fatal("No results are set for the StorageMock.UpdateJobInTx")
+		}
+		return (*mm_results).err
+	}
+	if mmUpdateJobInTx.funcUpdateJobInTx != nil {
+		return mmUpdateJobInTx.funcUpdateJobInTx(ctx, tx, id, update)
+	}
+	mmUpdateJobInTx.t.Fatalf("Unexpected call to StorageMock.UpdateJobInTx. %v %v %v %v", ctx, tx, id, update)
+	return
+}
+
+// UpdateJobInTxAfterCounter returns a count of finished StorageMock.UpdateJobInTx invocations
+func (mmUpdateJobInTx *StorageMock) UpdateJobInTxAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmUpdateJobInTx.afterUpdateJobInTxCounter)
+}
+
+// UpdateJobInTxBeforeCounter returns a count of StorageMock.UpdateJobInTx invocations
+func (mmUpdateJobInTx *StorageMock) UpdateJobInTxBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmUpdateJobInTx.beforeUpdateJobInTxCounter)
+}
+
+// Calls returns a list of arguments used in each call to StorageMock.UpdateJobInTx.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmUpdateJobInTx *mStorageMockUpdateJobInTx) Calls() []*StorageMockUpdateJobInTxParams {
+	mmUpdateJobInTx.mutex.RLock()
+
+	argCopy := make([]*StorageMockUpdateJobInTxParams, len(mmUpdateJobInTx.callArgs))
+	copy(argCopy, mmUpdateJobInTx.callArgs)
+
+	mmUpdateJobInTx.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockUpdateJobInTxDone returns true if the count of the UpdateJobInTx invocations corresponds
+// the number of defined expectations
+func (m *StorageMock) MinimockUpdateJobInTxDone() bool {
+	if m.UpdateJobInTxMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.UpdateJobInTxMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.UpdateJobInTxMock.invocationsDone()
+}
+
+// MinimockUpdateJobInTxInspect logs each unmet expectation
+func (m *StorageMock) MinimockUpdateJobInTxInspect() {
+	for _, e := range m.UpdateJobInTxMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to StorageMock.UpdateJobInTx at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterUpdateJobInTxCounter := mm_atomic.LoadUint64(&m.afterUpdateJobInTxCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.UpdateJobInTxMock.defaultExpectation != nil && afterUpdateJobInTxCounter < 1 {
+		if m.UpdateJobInTxMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to StorageMock.UpdateJobInTx at\n%s", m.UpdateJobInTxMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to StorageMock.UpdateJobInTx at\n%s with params: %#v", m.UpdateJobInTxMock.defaultExpectation.expectationOrigins.origin, *m.UpdateJobInTxMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcUpdateJobInTx != nil && afterUpdateJobInTxCounter < 1 {
+		m.t.Errorf("Expected call to StorageMock.UpdateJobInTx at\n%s", m.funcUpdateJobInTxOrigin)
+	}
+
+	if !m.UpdateJobInTxMock.invocationsDone() && afterUpdateJobInTxCounter > 0 {
+		m.t.Errorf("Expected %d calls to StorageMock.UpdateJobInTx at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.UpdateJobInTxMock.expectedInvocations), m.UpdateJobInTxMock.expectedInvocationsOrigin, afterUpdateJobInTxCounter)
+	}
+}
+
 // MinimockFinish checks that all mocked methods have been called the expected number of times
 func (m *StorageMock) MinimockFinish() {
 	m.finishOnce.Do(func() {
@@ -1806,6 +2221,8 @@ func (m *StorageMock) MinimockFinish() {
 			m.MinimockSaveJobInspect()
 
 			m.MinimockSaveMetadataInspect()
+
+			m.MinimockUpdateJobInTxInspect()
 		}
 	})
 }
@@ -1833,5 +2250,6 @@ func (m *StorageMock) minimockDone() bool {
 		m.MinimockGetJobDone() &&
 		m.MinimockGetMetadataDone() &&
 		m.MinimockSaveJobDone() &&
-		m.MinimockSaveMetadataDone()
+		m.MinimockSaveMetadataDone() &&
+		m.MinimockUpdateJobInTxDone()
 }

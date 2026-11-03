@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"sync"
 
 	"github.com/dir01/mediary/service"
@@ -67,5 +68,16 @@ func (s *MemoryStorage) SaveMetadata(ctx context.Context, metadata *service.Meta
 	s.metadataMutex.Lock()
 	defer s.metadataMutex.Unlock()
 	s.metadataMap[metadata.URL] = *metadata
+	return nil
+}
+
+// UpdateJobInTx ignores tx: MemoryStorage has no database.
+func (s *MemoryStorage) UpdateJobInTx(_ context.Context, _ *sql.Tx, id string, update func(job *service.Job) bool) error {
+	s.jobMutex.Lock()
+	defer s.jobMutex.Unlock()
+	job, exists := s.jobMap[id]
+	if exists && update(&job) {
+		s.jobMap[id] = job
+	}
 	return nil
 }
