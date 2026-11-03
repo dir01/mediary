@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/dir01/mediary/downloader"
@@ -97,7 +100,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("error initializing sql jobs queue: %v", err)
 	}
-	defer queue.Shutdown()
 
 	store, err := storage.NewSQLiteStorage(db)
 	if err != nil {
@@ -114,12 +116,38 @@ func main() {
 		log.Fatalf("error initializing uploader: %v", err)
 	}
 
+	// Kubernetes stops the pod with SIGTERM. Without this, Go ends the process at once,
+	// and deferred functions do not run. Then the queue does not release the claims of
+	// running jobs, and they wait for the claim to expire (the job timeout).
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
+
 	svc := service.NewService(dwn, store, queue, mediaProc, upl, logger)
 	svc.Start()
-	defer svc.Stop()
 
-	handler := mediary_http.PrepareHTTPServerMux(svc)
+	server := &http.Server{Addr: bindAddr, Handler: mediary_http.PrepareHTTPServerMux(svc)}
+	serverErr := make(chan error, 1)
+	go func() {
+		log.Printf("Starting to listen on %s", bindAddr)
+		serverErr <- server.ListenAndServe()
+	}()
 
-	log.Printf("Starting to listen on %s", bindAddr)
-	log.Println(http.ListenAndServe(bindAddr, handler))
+	select {
+	case <-ctx.Done():
+		log.Println("received shutdown signal, stopping")
+	case err := <-serverErr:
+		log.Printf("http server stopped: %v", err)
+	}
+
+	// Stop the jobs first: the queue cancels the running flows and releases their
+	// claims, so that the next process takes the jobs at once. The pod has 30s
+	// (terminationGracePeriodSeconds) for all steps.
+	svc.Stop()
+
+	shutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Printf("error shutting down http server: %v", err)
+	}
+	log.Println("stopped")
 }
