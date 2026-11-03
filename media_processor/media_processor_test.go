@@ -297,7 +297,8 @@ func makeTestMP3WithCover(t *testing.T) string {
 	for _, args := range [][]string{
 		{"-y", "-f", "lavfi", "-i", "color=c=red:s=64x64", "-frames:v", "1", coverFile},
 		{"-y", "-i", audioFile, "-i", coverFile, "-map", "0:a", "-map", "1:v", "-c", "copy",
-			"-disposition:v", "attached_pic", outFile},
+			"-disposition:v", "attached_pic",
+			"-metadata", "title=Test Title", "-metadata", "artist=Test Artist", outFile},
 	} {
 		if out, err := exec.Command("ffmpeg", args...).CombinedOutput(); err != nil {
 			t.Fatalf("ffmpeg failed to generate test MP3 with cover: %v\n%s", err, out)
@@ -344,4 +345,74 @@ func TestConcatenate_WithoutCoverPicture(t *testing.T) {
 		t.Fatalf("Concatenate failed: %v", err)
 	}
 	t.Cleanup(func() { _ = os.Remove(resultPath) })
+}
+
+// TestAddChapterTags_KeepsCoverAndTags verifies the order of the concatenate flow:
+// Concatenate copies the cover picture, and AddChapterTags must keep it, together
+// with the other tags of the input.
+func TestAddChapterTags_KeepsCoverAndTags(t *testing.T) {
+	file := makeTestMP3WithCover(t)
+	processor := &FFMpegMediaProcessor{log: testLogger}
+	resultPath, err := processor.Concatenate(context.Background(), []string{file, file}, "copy")
+	if err != nil {
+		t.Fatalf("Concatenate failed: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(resultPath) })
+
+	chapters := []service.Chapter{
+		{Title: "01", StartTime: 0, EndTime: 5 * time.Second},
+		{Title: "02", StartTime: 5 * time.Second, EndTime: 10 * time.Second},
+	}
+	if err := processor.AddChapterTags(context.Background(), resultPath, chapters); err != nil {
+		t.Fatalf("AddChapterTags failed: %v", err)
+	}
+
+	tag, err := id3v2.Open(resultPath, id3v2.Options{Parse: true})
+	if err != nil {
+		t.Fatalf("failed to open tagged file: %v", err)
+	}
+	defer func() { _ = tag.Close() }()
+	if n := len(tag.GetFrames("APIC")); n != 1 {
+		t.Errorf("expected 1 cover picture (APIC), got %d", n)
+	}
+	if tag.Title() != "Test Title" || tag.Artist() != "Test Artist" {
+		t.Errorf("tags were lost: title %q, artist %q", tag.Title(), tag.Artist())
+	}
+	if n := len(tag.GetFrames("CHAP")); n != len(chapters) {
+		t.Errorf("expected %d chapter frames, got %d", len(chapters), n)
+	}
+}
+
+// TestAddChapterTags_ReplacesOldChapters verifies that chapters that the file
+// already has are replaced, not added to.
+func TestAddChapterTags_ReplacesOldChapters(t *testing.T) {
+	filepath := createTestMP3WithTag(t)
+	processor := &FFMpegMediaProcessor{log: testLogger}
+	for _, chapters := range [][]service.Chapter{
+		{{Title: "old 1", StartTime: 0, EndTime: time.Minute}, {Title: "old 2", StartTime: time.Minute, EndTime: 2 * time.Minute}},
+		{{Title: "new", StartTime: 0, EndTime: 3 * time.Minute}},
+	} {
+		if err := processor.AddChapterTags(context.Background(), filepath, chapters); err != nil {
+			t.Fatalf("AddChapterTags failed: %v", err)
+		}
+	}
+
+	tag, err := id3v2.Open(filepath, id3v2.Options{Parse: true})
+	if err != nil {
+		t.Fatalf("failed to open tagged file: %v", err)
+	}
+	defer func() { _ = tag.Close() }()
+	frames := tag.GetFrames("CHAP")
+	if len(frames) != 1 {
+		t.Fatalf("expected 1 chapter frame, got %d", len(frames))
+	}
+	if cf, ok := frames[0].(id3v2.ChapterFrame); !ok || cf.Title == nil || cf.Title.Text != "new" {
+		t.Errorf("unexpected chapter frame: %+v", frames[0])
+	}
+	if n := len(tag.GetFrames("CTOC")); n != 1 {
+		t.Errorf("expected 1 CTOC frame, got %d", n)
+	}
+	if tag.Artist() != "test" {
+		t.Errorf("artist of the seed tag was lost: %q", tag.Artist())
+	}
 }
