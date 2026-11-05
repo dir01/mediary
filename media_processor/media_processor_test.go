@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -518,5 +519,48 @@ func TestAddChapterTags_NotMP3ReturnsError(t *testing.T) {
 	}
 	if _, err := processor.GetDuration(file); err != nil {
 		t.Errorf("file is not readable after AddChapterTags: %v", err)
+	}
+}
+
+// TestConcatenate_MP4AudioWithChapters verifies that the MP3 result does not
+// get the chapters of the first m4b file (they are only for that file), and
+// that a 32 kbit/s AAC input gives an MP3 of at least minTranscodeBitrate.
+func TestConcatenate_MP4AudioWithChapters(t *testing.T) {
+	dir := t.TempDir()
+	metadataFile := filepath.Join(dir, "chapters.txt")
+	if err := os.WriteFile(metadataFile,
+		[]byte(";FFMETADATA1\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=0\nEND=1000\ntitle=Inner\n"), 0o644); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+	file := filepath.Join(dir, "book.m4b")
+	if out, err := exec.Command("ffmpeg", "-y",
+		"-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-i", metadataFile,
+		"-map", "0:a", "-map_chapters", "1", "-c:a", "aac", "-b:a", "32k", "-f", "mp4", file,
+	).CombinedOutput(); err != nil {
+		t.Fatalf("ffmpeg failed to generate test m4b: %v\n%s", err, out)
+	}
+
+	processor := &FFMpegMediaProcessor{log: testLogger}
+	resultPath, err := processor.Concatenate(context.Background(), []string{file, file}, "copy")
+	if err != nil {
+		t.Fatalf("Concatenate failed: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(resultPath) })
+
+	out, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "chapter=start_time",
+		"-of", "csv=p=0", resultPath).Output()
+	if err != nil {
+		t.Fatalf("ffprobe failed: %v", err)
+	}
+	if len(out) != 0 {
+		t.Errorf("expected no chapters, got %q", out)
+	}
+
+	bitrate, err := processor.getAudioBitrate(resultPath)
+	if err != nil {
+		t.Fatalf("getAudioBitrate failed: %v", err)
+	}
+	if n, _ := strconv.Atoi(bitrate); n < minTranscodeBitrate {
+		t.Errorf("expected a bitrate of at least %d, got %s", minTranscodeBitrate, bitrate)
 	}
 }

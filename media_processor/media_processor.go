@@ -127,10 +127,12 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 		}
 		defer func() { _ = os.Remove(listFilepath) }()
 		// The concat demuxer does not keep the tags (title, artist). Read them
-		// from the first file, which is the second input.
+		// from the first file, which is the second input. Do not read its
+		// chapters (an m4b file can have them): they are only for the first file,
+		// and AddChapterTags adds the chapters of the result.
 		inputArgs = []string{
 			"-f", "concat", "-safe", "0", "-i", listFilepath,
-			"-i", filepaths[0], "-map_metadata", "1",
+			"-i", filepaths[0], "-map_metadata", "1", "-map_chapters", "-1",
 		}
 	}
 
@@ -149,6 +151,11 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 	// ffmpeg uses its default bitrate (128kbps for MP3) which can inflate the output.
 	if audioCodec != "copy" {
 		if bitrate, probeErr := conv.getAudioBitrate(filepaths[0]); probeErr == nil {
+			// MP3 needs a higher bitrate than AAC for the same quality. At 32 kbit/s
+			// (frequent for AAC audiobooks), MP3 sounds much worse.
+			if n, convErr := strconv.Atoi(bitrate); !allMP3 && convErr == nil && n < minTranscodeBitrate {
+				bitrate = strconv.Itoa(minTranscodeBitrate)
+			}
 			args = append(args, "-b:a", bitrate)
 			span.SetAttributes(attribute.String("source_bitrate", bitrate))
 			logAttrs = append(logAttrs, slog.String("sourceBitrate", bitrate))
@@ -174,6 +181,10 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 
 	return resultFilepath, nil
 }
+
+// minTranscodeBitrate is the lowest bitrate (bits per second) of the MP3 that
+// Concatenate makes from files that are not MP3.
+const minTranscodeBitrate = 64000
 
 func isMP3(filepath string) bool {
 	return strings.EqualFold(path.Ext(filepath), ".mp3")
