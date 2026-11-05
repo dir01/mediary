@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -78,6 +79,19 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 	}
 
 	ext := filepaths[0][firstExtIndex:]
+
+	// The result is always MP3: the episode feed gives all episodes as MP3, and
+	// only MP3 gets the ID3 chapters and cover picture of AddChapterTags. Other
+	// formats (m4a, m4b) are encoded to MP3, so "copy" is not possible for them.
+	allMP3 := true
+	for _, fp := range filepaths {
+		allMP3 = allMP3 && isMP3(fp)
+	}
+	if !allMP3 {
+		ext = ".mp3"
+		audioCodec = "libmp3lame"
+	}
+
 	errCtx := oops.With("ext", ext, "audioCodec", audioCodec, "filepaths", filepaths)
 	logAttrs := []any{
 		slog.String("ext", ext),
@@ -91,26 +105,57 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 		span.SetStatus(codes.Error, err.Error())
 		return "", errCtx.Wrapf(err, "failed to create temp file")
 	}
+	_ = file.Close()
 	resultFilepath := file.Name()
 	errCtx = errCtx.With("resultFilepath", resultFilepath)
 	logAttrs = append(logAttrs, slog.String("resultFilepath", resultFilepath))
 	span.SetAttributes(attribute.String("result.filepath", resultFilepath))
 
+	// The concat protocol joins the bytes of the files. This is correct for MP3,
+	// because each MP3 frame is independent. It is not correct for MP4 (m4a, m4b):
+	// each file has its own index (the moov atom), and ffmpeg reads only the
+	// first file. For all formats other than MP3, use the concat demuxer.
+	var inputArgs []string
+	if allMP3 {
+		inputArgs = []string{"-i", "concat:" + strings.Join(filepaths, "|")}
+	} else {
+		listFilepath, listErr := writeConcatList(filepaths)
+		if listErr != nil {
+			span.RecordError(listErr)
+			span.SetStatus(codes.Error, listErr.Error())
+			return "", errCtx.Wrapf(listErr, "failed to write concat list")
+		}
+		defer func() { _ = os.Remove(listFilepath) }()
+		// The concat demuxer does not keep the tags (title, artist). Read them
+		// from the first file, which is the second input. Do not read its
+		// chapters (an m4b file can have them): they are only for the first file,
+		// and AddChapterTags adds the chapters of the result.
+		inputArgs = []string{
+			"-f", "concat", "-safe", "0", "-i", listFilepath,
+			"-i", filepaths[0], "-map_metadata", "1", "-map_chapters", "-1",
+		}
+	}
+
 	// Copy the cover picture (if there is one) and do not encode it again. The mp3
 	// muxer keeps all audio packets in memory until it gets the cover picture. An
 	// encoded cover comes only at the end of the input, so memory grows with the
 	// input size: 2.6 GB for 1.1 GB of MP3. A copied cover comes at the start.
-	args := []string{
-		"-y", "-i", "concat:" + strings.Join(filepaths, "|"),
+	args := append([]string{"-y"}, inputArgs...)
+	args = append(args,
 		"-map", "0:a", "-map", "0:v?", "-c:v", "copy",
 		"-acodec", audioCodec,
-	}
+	)
 
 	// When re-encoding (audioCodec != "copy"), probe the source bitrate and
 	// pass it to ffmpeg so the output matches the source quality. Without this,
 	// ffmpeg uses its default bitrate (128kbps for MP3) which can inflate the output.
 	if audioCodec != "copy" {
 		if bitrate, probeErr := conv.getAudioBitrate(filepaths[0]); probeErr == nil {
+			// MP3 needs a higher bitrate than AAC for the same quality. At 32 kbit/s
+			// (frequent for AAC audiobooks), MP3 sounds much worse.
+			if n, convErr := strconv.Atoi(bitrate); !allMP3 && convErr == nil && n < minTranscodeBitrate {
+				bitrate = strconv.Itoa(minTranscodeBitrate)
+			}
 			args = append(args, "-b:a", bitrate)
 			span.SetAttributes(attribute.String("source_bitrate", bitrate))
 			logAttrs = append(logAttrs, slog.String("sourceBitrate", bitrate))
@@ -135,6 +180,36 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 	conv.log.Debug("ffmpeg finished successfully", logAttrs...)
 
 	return resultFilepath, nil
+}
+
+// minTranscodeBitrate is the lowest bitrate (bits per second) of the MP3 that
+// Concatenate makes from files that are not MP3.
+const minTranscodeBitrate = 64000
+
+func isMP3(filepath string) bool {
+	return strings.EqualFold(path.Ext(filepath), ".mp3")
+}
+
+// writeConcatList writes the input file of the ffmpeg concat demuxer and
+// returns its path. See https://ffmpeg.org/ffmpeg-formats.html#concat
+func writeConcatList(filepaths []string) (string, error) {
+	file, err := os.CreateTemp("", "concat_*.txt")
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = file.Close() }()
+
+	var list strings.Builder
+	for _, fp := range filepaths {
+		// Each path is in single quotes. A single quote in the path (for example,
+		// "Abaddon's Gate") closes the quotes, adds an escaped quote and opens them again.
+		list.WriteString("file '" + strings.ReplaceAll(fp, "'", `'\''`) + "'\n")
+	}
+	if _, err := file.WriteString(list.String()); err != nil {
+		_ = os.Remove(file.Name())
+		return "", err
+	}
+	return file.Name(), nil
 }
 
 // getAudioBitrate probes the audio bitrate of the given file using ffprobe.
@@ -228,6 +303,12 @@ func (conv *FFMpegMediaProcessor) AddChapterTags(ctx context.Context, filepath s
 
 	errCtx := oops.With("filepath", filepath, "chapters", len(chapters))
 	logAttrs := []any{slog.String("filepath", filepath), slog.Int("chapters", len(chapters))}
+
+	// ID3 tags are only for MP3. An ID3 tag at the start of an MP4 file makes the
+	// file unreadable ("moov atom not found").
+	if !isMP3(filepath) {
+		return errCtx.Errorf("ID3 chapter tags are only for MP3 files")
+	}
 
 	// Parse the existing tag, so that Save keeps its frames: the cover picture (APIC)
 	// that Concatenate copies, and the title, artist and album. Without Parse, Save
