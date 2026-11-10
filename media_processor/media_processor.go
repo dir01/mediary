@@ -1,6 +1,7 @@
 package media_processor
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -8,8 +9,10 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	id3v2 "github.com/bogem/id3v2/v2"
@@ -83,11 +86,8 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 	// The result is always MP3: the episode feed gives all episodes as MP3, and
 	// only MP3 gets the ID3 chapters and cover picture of AddChapterTags. Other
 	// formats (m4a, m4b) are encoded to MP3, so "copy" is not possible for them.
-	allMP3 := true
-	for _, fp := range filepaths {
-		allMP3 = allMP3 && isMP3(fp)
-	}
-	if !allMP3 {
+	mp3Only := allMP3(filepaths)
+	if !mp3Only {
 		ext = ".mp3"
 		audioCodec = "libmp3lame"
 	}
@@ -116,7 +116,7 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 	// each file has its own index (the moov atom), and ffmpeg reads only the
 	// first file. For all formats other than MP3, use the concat demuxer.
 	var inputArgs []string
-	if allMP3 {
+	if mp3Only {
 		inputArgs = []string{"-i", "concat:" + strings.Join(filepaths, "|")}
 	} else {
 		listFilepath, listErr := writeConcatList(filepaths)
@@ -153,7 +153,7 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 		if bitrate, probeErr := conv.getAudioBitrate(filepaths[0]); probeErr == nil {
 			// MP3 needs a higher bitrate than AAC for the same quality. At 32 kbit/s
 			// (frequent for AAC audiobooks), MP3 sounds much worse.
-			if n, convErr := strconv.Atoi(bitrate); !allMP3 && convErr == nil && n < minTranscodeBitrate {
+			if n, convErr := strconv.Atoi(bitrate); !mp3Only && convErr == nil && n < minTranscodeBitrate {
 				bitrate = strconv.Itoa(minTranscodeBitrate)
 			}
 			args = append(args, "-b:a", bitrate)
@@ -182,12 +182,238 @@ func (conv *FFMpegMediaProcessor) Concatenate(ctx context.Context, filepaths []s
 	return resultFilepath, nil
 }
 
+// ConcatDurations returns the duration of each file in the result of
+// Concatenate, in the order of filepaths. The chapters of the result start at
+// the sums of these durations.
+//
+// Do not use the durations of the files themselves (GetDuration) for this:
+// a small error in each file adds up to a large drift in the last chapters.
+//   - The concat protocol joins the bytes of the MP3 files, so each file after
+//     the first one adds its Xing/Info header frame as 26 ms of silence.
+//   - For an MP3 file without a Xing header (frequent for VBR), ffprobe
+//     calculates the duration from the bitrate of the first frames. The error
+//     can be 1 second or more for each file.
+//   - The AAC decoder gives the padding of the last frame of each file
+//     (0 to 23 ms), which the duration of the file does not include.
+//
+// Thus, ConcatDurations measures the audio that Concatenate puts into the result.
+func (conv *FFMpegMediaProcessor) ConcatDurations(ctx context.Context, filepaths []string) ([]time.Duration, error) {
+	ctx, span := otel.Tracer("github.com/dir01/mediary/media_processor").Start(ctx, "media_processor.ConcatDurations",
+		trace.WithAttributes(attribute.Int("files.count", len(filepaths))),
+	)
+	defer span.End()
+
+	var durations []time.Duration
+	var err error
+	if allMP3(filepaths) {
+		durations, err = mp3ConcatDurations(ctx, filepaths)
+	} else {
+		durations, err = decodedDurations(ctx, filepaths)
+	}
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, oops.With("filepaths", filepaths).Wrapf(err, "failed to measure durations for chapters")
+	}
+	return durations, nil
+}
+
+// mp3ConcatDurations reads the packets of the stream that the concat protocol
+// gives to Concatenate. Each packet is an MP3 frame that Concatenate copies or
+// decodes. A packet is in the file that contains its first byte.
+func mp3ConcatDurations(ctx context.Context, filepaths []string) ([]time.Duration, error) {
+	// fileStarts[i] is the position of file i in the joined bytes.
+	fileStarts := make([]int64, len(filepaths))
+	var size int64
+	for i, fp := range filepaths {
+		stat, err := os.Stat(fp)
+		if err != nil {
+			return nil, fmt.Errorf("failed to stat file: %w", err)
+		}
+		fileStarts[i] = size
+		size += stat.Size()
+	}
+
+	// Add the durations as integers in the time base of the stream. A float
+	// value (duration_time) has an error in each of the millions of packets.
+	ticks := make([]int64, len(filepaths))
+	var timeBase string
+	file := 0
+	err := ffprobeEntries(ctx, []string{
+		"-select_streams", "a:0",
+		"-show_entries", "stream=time_base:packet=pos,duration",
+		"concat:" + strings.Join(filepaths, "|"),
+	}, func(section string, entries map[string]string) error {
+		switch section {
+		case "stream":
+			timeBase = entries["time_base"]
+		case "packet":
+			pos, err := strconv.ParseInt(entries["pos"], 10, 64)
+			if err != nil {
+				return fmt.Errorf("bad packet position %q: %w", entries["pos"], err)
+			}
+			duration, err := strconv.ParseInt(entries["duration"], 10, 64)
+			if err != nil {
+				return fmt.Errorf("bad packet duration %q: %w", entries["duration"], err)
+			}
+			for file+1 < len(fileStarts) && pos >= fileStarts[file+1] {
+				file++
+			}
+			ticks[file] += duration
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	num, den, ok := strings.Cut(timeBase, "/")
+	numerator, numErr := strconv.ParseInt(num, 10, 64)
+	denominator, denErr := strconv.ParseInt(den, 10, 64)
+	if !ok || numErr != nil || denErr != nil || numerator <= 0 || denominator <= 0 {
+		return nil, fmt.Errorf("bad time base %q", timeBase)
+	}
+	durations := make([]time.Duration, len(filepaths))
+	for i, t := range ticks {
+		durations[i] = scaleDuration(t*numerator, denominator)
+	}
+	return durations, nil
+}
+
+// decodedDurations returns decodedDuration for each file. It decodes the files
+// in parallel: decoding takes about 8 s for each hour of AAC on one CPU.
+func decodedDurations(ctx context.Context, filepaths []string) ([]time.Duration, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	durations := make([]time.Duration, len(filepaths))
+	var firstErr error
+	var errOnce sync.Once
+	slots := make(chan struct{}, runtime.NumCPU())
+	var wg sync.WaitGroup
+	for i, fp := range filepaths {
+		slots <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer func() { <-slots; wg.Done() }()
+			var err error
+			if durations[i], err = decodedDuration(ctx, fp); err != nil {
+				// Keep the first error: the next ones are a result of cancel.
+				errOnce.Do(func() { firstErr = fmt.Errorf("%s: %w", fp, err) })
+				cancel() // the durations are not usable, stop the other files
+			}
+		}()
+	}
+	wg.Wait()
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	return durations, nil
+}
+
+// decodedDuration decodes the audio of the file and returns the duration of
+// the samples that the decoder gives. The concat demuxer of Concatenate gives
+// the same samples to the encoder.
+func decodedDuration(ctx context.Context, filepath string) (time.Duration, error) {
+	var samples int64
+	var sampleRate string
+	err := ffprobeEntries(ctx, []string{
+		"-select_streams", "a:0",
+		"-show_entries", "stream=sample_rate:frame=nb_samples",
+		filepath,
+	}, func(section string, entries map[string]string) error {
+		switch section {
+		case "stream":
+			sampleRate = entries["sample_rate"]
+		case "frame":
+			n, err := strconv.ParseInt(entries["nb_samples"], 10, 64)
+			if err != nil {
+				return fmt.Errorf("bad number of samples %q: %w", entries["nb_samples"], err)
+			}
+			samples += n
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	rate, err := strconv.ParseInt(sampleRate, 10, 64)
+	if err != nil || rate <= 0 {
+		return 0, fmt.Errorf("bad sample rate %q", sampleRate)
+	}
+	return scaleDuration(samples, rate), nil
+}
+
+// scaleDuration returns n/d seconds, rounded to the nearest nanosecond. It does
+// not overflow for 1000 hours of audio in a time base of 1/14112000 (MP3).
+func scaleDuration(n, d int64) time.Duration {
+	whole := n / d
+	rest := n % d
+	return time.Duration(whole)*time.Second + time.Duration((rest*int64(time.Second)+d/2)/d)
+}
+
+// ffprobeEntries runs ffprobe with the given arguments and calls fn for each
+// section of the output (for example, each packet). ffprobe can write millions
+// of sections, so they are read one by one and not kept in memory.
+func ffprobeEntries(ctx context.Context, args []string, fn func(section string, entries map[string]string) error) error {
+	cmd := exec.CommandContext(ctx, "ffprobe", append([]string{"-v", "error", "-of", "compact=p=1"}, args...)...)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start ffprobe: %w", err)
+	}
+
+	// Each line is a section, for example "packet|pos=1058|duration=368640".
+	var fnErr error
+	scanner := bufio.NewScanner(stdout)
+	for fnErr == nil && scanner.Scan() {
+		parts := strings.Split(scanner.Text(), "|")
+		entries := make(map[string]string, len(parts)-1)
+		for _, part := range parts[1:] {
+			if key, value, ok := strings.Cut(part, "="); ok {
+				entries[key] = value
+			}
+		}
+		fnErr = fn(parts[0], entries)
+	}
+	if fnErr == nil {
+		fnErr = scanner.Err()
+	}
+	if fnErr != nil {
+		// Stop ffprobe, so that Wait does not wait for a write that nobody reads.
+		_ = cmd.Process.Kill()
+	}
+	waitErr := cmd.Wait()
+	if fnErr != nil {
+		return fnErr
+	}
+	if waitErr != nil {
+		return fmt.Errorf("ffprobe failed: %w: %s", waitErr, stderr.String())
+	}
+	return nil
+}
+
 // minTranscodeBitrate is the lowest bitrate (bits per second) of the MP3 that
 // Concatenate makes from files that are not MP3.
 const minTranscodeBitrate = 64000
 
 func isMP3(filepath string) bool {
 	return strings.EqualFold(path.Ext(filepath), ".mp3")
+}
+
+// allMP3 tells if Concatenate joins the bytes of the files (all files are MP3)
+// or uses the concat demuxer.
+func allMP3(filepaths []string) bool {
+	for _, fp := range filepaths {
+		if !isMP3(fp) {
+			return false
+		}
+	}
+	return true
 }
 
 // writeConcatList writes the input file of the ffmpeg concat demuxer and

@@ -6,6 +6,7 @@ import (
 	"context"
 	"sync"
 	mm_atomic "sync/atomic"
+	"time"
 	mm_time "time"
 
 	mm_service "github.com/dir01/mediary/service"
@@ -23,6 +24,13 @@ type MediaProcessorMock struct {
 	afterAddChapterTagsCounter  uint64
 	beforeAddChapterTagsCounter uint64
 	AddChapterTagsMock          mMediaProcessorMockAddChapterTags
+
+	funcConcatDurations          func(ctx context.Context, filepaths []string) (durations []time.Duration, err error)
+	funcConcatDurationsOrigin    string
+	inspectFuncConcatDurations   func(ctx context.Context, filepaths []string)
+	afterConcatDurationsCounter  uint64
+	beforeConcatDurationsCounter uint64
+	ConcatDurationsMock          mMediaProcessorMockConcatDurations
 
 	funcConcatenate          func(ctx context.Context, filepaths []string, audioCodec string) (resultFilepath string, err error)
 	funcConcatenateOrigin    string
@@ -49,6 +57,9 @@ func NewMediaProcessorMock(t minimock.Tester) *MediaProcessorMock {
 
 	m.AddChapterTagsMock = mMediaProcessorMockAddChapterTags{mock: m}
 	m.AddChapterTagsMock.callArgs = []*MediaProcessorMockAddChapterTagsParams{}
+
+	m.ConcatDurationsMock = mMediaProcessorMockConcatDurations{mock: m}
+	m.ConcatDurationsMock.callArgs = []*MediaProcessorMockConcatDurationsParams{}
 
 	m.ConcatenateMock = mMediaProcessorMockConcatenate{mock: m}
 	m.ConcatenateMock.callArgs = []*MediaProcessorMockConcatenateParams{}
@@ -431,6 +442,349 @@ func (m *MediaProcessorMock) MinimockAddChapterTagsInspect() {
 	if !m.AddChapterTagsMock.invocationsDone() && afterAddChapterTagsCounter > 0 {
 		m.t.Errorf("Expected %d calls to MediaProcessorMock.AddChapterTags at\n%s but found %d calls",
 			mm_atomic.LoadUint64(&m.AddChapterTagsMock.expectedInvocations), m.AddChapterTagsMock.expectedInvocationsOrigin, afterAddChapterTagsCounter)
+	}
+}
+
+type mMediaProcessorMockConcatDurations struct {
+	optional           bool
+	mock               *MediaProcessorMock
+	defaultExpectation *MediaProcessorMockConcatDurationsExpectation
+	expectations       []*MediaProcessorMockConcatDurationsExpectation
+
+	callArgs []*MediaProcessorMockConcatDurationsParams
+	mutex    sync.RWMutex
+
+	expectedInvocations       uint64
+	expectedInvocationsOrigin string
+}
+
+// MediaProcessorMockConcatDurationsExpectation specifies expectation struct of the MediaProcessor.ConcatDurations
+type MediaProcessorMockConcatDurationsExpectation struct {
+	mock               *MediaProcessorMock
+	params             *MediaProcessorMockConcatDurationsParams
+	paramPtrs          *MediaProcessorMockConcatDurationsParamPtrs
+	expectationOrigins MediaProcessorMockConcatDurationsExpectationOrigins
+	results            *MediaProcessorMockConcatDurationsResults
+	returnOrigin       string
+	Counter            uint64
+}
+
+// MediaProcessorMockConcatDurationsParams contains parameters of the MediaProcessor.ConcatDurations
+type MediaProcessorMockConcatDurationsParams struct {
+	ctx       context.Context
+	filepaths []string
+}
+
+// MediaProcessorMockConcatDurationsParamPtrs contains pointers to parameters of the MediaProcessor.ConcatDurations
+type MediaProcessorMockConcatDurationsParamPtrs struct {
+	ctx       *context.Context
+	filepaths *[]string
+}
+
+// MediaProcessorMockConcatDurationsResults contains results of the MediaProcessor.ConcatDurations
+type MediaProcessorMockConcatDurationsResults struct {
+	durations []time.Duration
+	err       error
+}
+
+// MediaProcessorMockConcatDurationsOrigins contains origins of expectations of the MediaProcessor.ConcatDurations
+type MediaProcessorMockConcatDurationsExpectationOrigins struct {
+	origin          string
+	originCtx       string
+	originFilepaths string
+}
+
+// Marks this method to be optional. The default behavior of any method with Return() is '1 or more', meaning
+// the test will fail minimock's automatic final call check if the mocked method was not called at least once.
+// Optional() makes method check to work in '0 or more' mode.
+// It is NOT RECOMMENDED to use this option unless you really need it, as default behaviour helps to
+// catch the problems when the expected method call is totally skipped during test run.
+func (mmConcatDurations *mMediaProcessorMockConcatDurations) Optional() *mMediaProcessorMockConcatDurations {
+	mmConcatDurations.optional = true
+	return mmConcatDurations
+}
+
+// Expect sets up expected params for MediaProcessor.ConcatDurations
+func (mmConcatDurations *mMediaProcessorMockConcatDurations) Expect(ctx context.Context, filepaths []string) *mMediaProcessorMockConcatDurations {
+	if mmConcatDurations.mock.funcConcatDurations != nil {
+		mmConcatDurations.mock.t.Fatalf("MediaProcessorMock.ConcatDurations mock is already set by Set")
+	}
+
+	if mmConcatDurations.defaultExpectation == nil {
+		mmConcatDurations.defaultExpectation = &MediaProcessorMockConcatDurationsExpectation{}
+	}
+
+	if mmConcatDurations.defaultExpectation.paramPtrs != nil {
+		mmConcatDurations.mock.t.Fatalf("MediaProcessorMock.ConcatDurations mock is already set by ExpectParams functions")
+	}
+
+	mmConcatDurations.defaultExpectation.params = &MediaProcessorMockConcatDurationsParams{ctx, filepaths}
+	mmConcatDurations.defaultExpectation.expectationOrigins.origin = minimock.CallerInfo(1)
+	for _, e := range mmConcatDurations.expectations {
+		if minimock.Equal(e.params, mmConcatDurations.defaultExpectation.params) {
+			mmConcatDurations.mock.t.Fatalf("Expectation set by When has same params: %#v", *mmConcatDurations.defaultExpectation.params)
+		}
+	}
+
+	return mmConcatDurations
+}
+
+// ExpectCtxParam1 sets up expected param ctx for MediaProcessor.ConcatDurations
+func (mmConcatDurations *mMediaProcessorMockConcatDurations) ExpectCtxParam1(ctx context.Context) *mMediaProcessorMockConcatDurations {
+	if mmConcatDurations.mock.funcConcatDurations != nil {
+		mmConcatDurations.mock.t.Fatalf("MediaProcessorMock.ConcatDurations mock is already set by Set")
+	}
+
+	if mmConcatDurations.defaultExpectation == nil {
+		mmConcatDurations.defaultExpectation = &MediaProcessorMockConcatDurationsExpectation{}
+	}
+
+	if mmConcatDurations.defaultExpectation.params != nil {
+		mmConcatDurations.mock.t.Fatalf("MediaProcessorMock.ConcatDurations mock is already set by Expect")
+	}
+
+	if mmConcatDurations.defaultExpectation.paramPtrs == nil {
+		mmConcatDurations.defaultExpectation.paramPtrs = &MediaProcessorMockConcatDurationsParamPtrs{}
+	}
+	mmConcatDurations.defaultExpectation.paramPtrs.ctx = &ctx
+	mmConcatDurations.defaultExpectation.expectationOrigins.originCtx = minimock.CallerInfo(1)
+
+	return mmConcatDurations
+}
+
+// ExpectFilepathsParam2 sets up expected param filepaths for MediaProcessor.ConcatDurations
+func (mmConcatDurations *mMediaProcessorMockConcatDurations) ExpectFilepathsParam2(filepaths []string) *mMediaProcessorMockConcatDurations {
+	if mmConcatDurations.mock.funcConcatDurations != nil {
+		mmConcatDurations.mock.t.Fatalf("MediaProcessorMock.ConcatDurations mock is already set by Set")
+	}
+
+	if mmConcatDurations.defaultExpectation == nil {
+		mmConcatDurations.defaultExpectation = &MediaProcessorMockConcatDurationsExpectation{}
+	}
+
+	if mmConcatDurations.defaultExpectation.params != nil {
+		mmConcatDurations.mock.t.Fatalf("MediaProcessorMock.ConcatDurations mock is already set by Expect")
+	}
+
+	if mmConcatDurations.defaultExpectation.paramPtrs == nil {
+		mmConcatDurations.defaultExpectation.paramPtrs = &MediaProcessorMockConcatDurationsParamPtrs{}
+	}
+	mmConcatDurations.defaultExpectation.paramPtrs.filepaths = &filepaths
+	mmConcatDurations.defaultExpectation.expectationOrigins.originFilepaths = minimock.CallerInfo(1)
+
+	return mmConcatDurations
+}
+
+// Inspect accepts an inspector function that has same arguments as the MediaProcessor.ConcatDurations
+func (mmConcatDurations *mMediaProcessorMockConcatDurations) Inspect(f func(ctx context.Context, filepaths []string)) *mMediaProcessorMockConcatDurations {
+	if mmConcatDurations.mock.inspectFuncConcatDurations != nil {
+		mmConcatDurations.mock.t.Fatalf("Inspect function is already set for MediaProcessorMock.ConcatDurations")
+	}
+
+	mmConcatDurations.mock.inspectFuncConcatDurations = f
+
+	return mmConcatDurations
+}
+
+// Return sets up results that will be returned by MediaProcessor.ConcatDurations
+func (mmConcatDurations *mMediaProcessorMockConcatDurations) Return(durations []time.Duration, err error) *MediaProcessorMock {
+	if mmConcatDurations.mock.funcConcatDurations != nil {
+		mmConcatDurations.mock.t.Fatalf("MediaProcessorMock.ConcatDurations mock is already set by Set")
+	}
+
+	if mmConcatDurations.defaultExpectation == nil {
+		mmConcatDurations.defaultExpectation = &MediaProcessorMockConcatDurationsExpectation{mock: mmConcatDurations.mock}
+	}
+	mmConcatDurations.defaultExpectation.results = &MediaProcessorMockConcatDurationsResults{durations, err}
+	mmConcatDurations.defaultExpectation.returnOrigin = minimock.CallerInfo(1)
+	return mmConcatDurations.mock
+}
+
+// Set uses given function f to mock the MediaProcessor.ConcatDurations method
+func (mmConcatDurations *mMediaProcessorMockConcatDurations) Set(f func(ctx context.Context, filepaths []string) (durations []time.Duration, err error)) *MediaProcessorMock {
+	if mmConcatDurations.defaultExpectation != nil {
+		mmConcatDurations.mock.t.Fatalf("Default expectation is already set for the MediaProcessor.ConcatDurations method")
+	}
+
+	if len(mmConcatDurations.expectations) > 0 {
+		mmConcatDurations.mock.t.Fatalf("Some expectations are already set for the MediaProcessor.ConcatDurations method")
+	}
+
+	mmConcatDurations.mock.funcConcatDurations = f
+	mmConcatDurations.mock.funcConcatDurationsOrigin = minimock.CallerInfo(1)
+	return mmConcatDurations.mock
+}
+
+// When sets expectation for the MediaProcessor.ConcatDurations which will trigger the result defined by the following
+// Then helper
+func (mmConcatDurations *mMediaProcessorMockConcatDurations) When(ctx context.Context, filepaths []string) *MediaProcessorMockConcatDurationsExpectation {
+	if mmConcatDurations.mock.funcConcatDurations != nil {
+		mmConcatDurations.mock.t.Fatalf("MediaProcessorMock.ConcatDurations mock is already set by Set")
+	}
+
+	expectation := &MediaProcessorMockConcatDurationsExpectation{
+		mock:               mmConcatDurations.mock,
+		params:             &MediaProcessorMockConcatDurationsParams{ctx, filepaths},
+		expectationOrigins: MediaProcessorMockConcatDurationsExpectationOrigins{origin: minimock.CallerInfo(1)},
+	}
+	mmConcatDurations.expectations = append(mmConcatDurations.expectations, expectation)
+	return expectation
+}
+
+// Then sets up MediaProcessor.ConcatDurations return parameters for the expectation previously defined by the When method
+func (e *MediaProcessorMockConcatDurationsExpectation) Then(durations []time.Duration, err error) *MediaProcessorMock {
+	e.results = &MediaProcessorMockConcatDurationsResults{durations, err}
+	return e.mock
+}
+
+// Times sets number of times MediaProcessor.ConcatDurations should be invoked
+func (mmConcatDurations *mMediaProcessorMockConcatDurations) Times(n uint64) *mMediaProcessorMockConcatDurations {
+	if n == 0 {
+		mmConcatDurations.mock.t.Fatalf("Times of MediaProcessorMock.ConcatDurations mock can not be zero")
+	}
+	mm_atomic.StoreUint64(&mmConcatDurations.expectedInvocations, n)
+	mmConcatDurations.expectedInvocationsOrigin = minimock.CallerInfo(1)
+	return mmConcatDurations
+}
+
+func (mmConcatDurations *mMediaProcessorMockConcatDurations) invocationsDone() bool {
+	if len(mmConcatDurations.expectations) == 0 && mmConcatDurations.defaultExpectation == nil && mmConcatDurations.mock.funcConcatDurations == nil {
+		return true
+	}
+
+	totalInvocations := mm_atomic.LoadUint64(&mmConcatDurations.mock.afterConcatDurationsCounter)
+	expectedInvocations := mm_atomic.LoadUint64(&mmConcatDurations.expectedInvocations)
+
+	return totalInvocations > 0 && (expectedInvocations == 0 || expectedInvocations == totalInvocations)
+}
+
+// ConcatDurations implements mm_service.MediaProcessor
+func (mmConcatDurations *MediaProcessorMock) ConcatDurations(ctx context.Context, filepaths []string) (durations []time.Duration, err error) {
+	mm_atomic.AddUint64(&mmConcatDurations.beforeConcatDurationsCounter, 1)
+	defer mm_atomic.AddUint64(&mmConcatDurations.afterConcatDurationsCounter, 1)
+
+	mmConcatDurations.t.Helper()
+
+	if mmConcatDurations.inspectFuncConcatDurations != nil {
+		mmConcatDurations.inspectFuncConcatDurations(ctx, filepaths)
+	}
+
+	mm_params := MediaProcessorMockConcatDurationsParams{ctx, filepaths}
+
+	// Record call args
+	mmConcatDurations.ConcatDurationsMock.mutex.Lock()
+	mmConcatDurations.ConcatDurationsMock.callArgs = append(mmConcatDurations.ConcatDurationsMock.callArgs, &mm_params)
+	mmConcatDurations.ConcatDurationsMock.mutex.Unlock()
+
+	for _, e := range mmConcatDurations.ConcatDurationsMock.expectations {
+		if minimock.Equal(*e.params, mm_params) {
+			mm_atomic.AddUint64(&e.Counter, 1)
+			return e.results.durations, e.results.err
+		}
+	}
+
+	if mmConcatDurations.ConcatDurationsMock.defaultExpectation != nil {
+		mm_atomic.AddUint64(&mmConcatDurations.ConcatDurationsMock.defaultExpectation.Counter, 1)
+		mm_want := mmConcatDurations.ConcatDurationsMock.defaultExpectation.params
+		mm_want_ptrs := mmConcatDurations.ConcatDurationsMock.defaultExpectation.paramPtrs
+
+		mm_got := MediaProcessorMockConcatDurationsParams{ctx, filepaths}
+
+		if mm_want_ptrs != nil {
+
+			if mm_want_ptrs.ctx != nil && !minimock.Equal(*mm_want_ptrs.ctx, mm_got.ctx) {
+				mmConcatDurations.t.Errorf("MediaProcessorMock.ConcatDurations got unexpected parameter ctx, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmConcatDurations.ConcatDurationsMock.defaultExpectation.expectationOrigins.originCtx, *mm_want_ptrs.ctx, mm_got.ctx, minimock.Diff(*mm_want_ptrs.ctx, mm_got.ctx))
+			}
+
+			if mm_want_ptrs.filepaths != nil && !minimock.Equal(*mm_want_ptrs.filepaths, mm_got.filepaths) {
+				mmConcatDurations.t.Errorf("MediaProcessorMock.ConcatDurations got unexpected parameter filepaths, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+					mmConcatDurations.ConcatDurationsMock.defaultExpectation.expectationOrigins.originFilepaths, *mm_want_ptrs.filepaths, mm_got.filepaths, minimock.Diff(*mm_want_ptrs.filepaths, mm_got.filepaths))
+			}
+
+		} else if mm_want != nil && !minimock.Equal(*mm_want, mm_got) {
+			mmConcatDurations.t.Errorf("MediaProcessorMock.ConcatDurations got unexpected parameters, expected at\n%s:\nwant: %#v\n got: %#v%s\n",
+				mmConcatDurations.ConcatDurationsMock.defaultExpectation.expectationOrigins.origin, *mm_want, mm_got, minimock.Diff(*mm_want, mm_got))
+		}
+
+		mm_results := mmConcatDurations.ConcatDurationsMock.defaultExpectation.results
+		if mm_results == nil {
+			mmConcatDurations.t.Fatal("No results are set for the MediaProcessorMock.ConcatDurations")
+		}
+		return (*mm_results).durations, (*mm_results).err
+	}
+	if mmConcatDurations.funcConcatDurations != nil {
+		return mmConcatDurations.funcConcatDurations(ctx, filepaths)
+	}
+	mmConcatDurations.t.Fatalf("Unexpected call to MediaProcessorMock.ConcatDurations. %v %v", ctx, filepaths)
+	return
+}
+
+// ConcatDurationsAfterCounter returns a count of finished MediaProcessorMock.ConcatDurations invocations
+func (mmConcatDurations *MediaProcessorMock) ConcatDurationsAfterCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmConcatDurations.afterConcatDurationsCounter)
+}
+
+// ConcatDurationsBeforeCounter returns a count of MediaProcessorMock.ConcatDurations invocations
+func (mmConcatDurations *MediaProcessorMock) ConcatDurationsBeforeCounter() uint64 {
+	return mm_atomic.LoadUint64(&mmConcatDurations.beforeConcatDurationsCounter)
+}
+
+// Calls returns a list of arguments used in each call to MediaProcessorMock.ConcatDurations.
+// The list is in the same order as the calls were made (i.e. recent calls have a higher index)
+func (mmConcatDurations *mMediaProcessorMockConcatDurations) Calls() []*MediaProcessorMockConcatDurationsParams {
+	mmConcatDurations.mutex.RLock()
+
+	argCopy := make([]*MediaProcessorMockConcatDurationsParams, len(mmConcatDurations.callArgs))
+	copy(argCopy, mmConcatDurations.callArgs)
+
+	mmConcatDurations.mutex.RUnlock()
+
+	return argCopy
+}
+
+// MinimockConcatDurationsDone returns true if the count of the ConcatDurations invocations corresponds
+// the number of defined expectations
+func (m *MediaProcessorMock) MinimockConcatDurationsDone() bool {
+	if m.ConcatDurationsMock.optional {
+		// Optional methods provide '0 or more' call count restriction.
+		return true
+	}
+
+	for _, e := range m.ConcatDurationsMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			return false
+		}
+	}
+
+	return m.ConcatDurationsMock.invocationsDone()
+}
+
+// MinimockConcatDurationsInspect logs each unmet expectation
+func (m *MediaProcessorMock) MinimockConcatDurationsInspect() {
+	for _, e := range m.ConcatDurationsMock.expectations {
+		if mm_atomic.LoadUint64(&e.Counter) < 1 {
+			m.t.Errorf("Expected call to MediaProcessorMock.ConcatDurations at\n%s with params: %#v", e.expectationOrigins.origin, *e.params)
+		}
+	}
+
+	afterConcatDurationsCounter := mm_atomic.LoadUint64(&m.afterConcatDurationsCounter)
+	// if default expectation was set then invocations count should be greater than zero
+	if m.ConcatDurationsMock.defaultExpectation != nil && afterConcatDurationsCounter < 1 {
+		if m.ConcatDurationsMock.defaultExpectation.params == nil {
+			m.t.Errorf("Expected call to MediaProcessorMock.ConcatDurations at\n%s", m.ConcatDurationsMock.defaultExpectation.returnOrigin)
+		} else {
+			m.t.Errorf("Expected call to MediaProcessorMock.ConcatDurations at\n%s with params: %#v", m.ConcatDurationsMock.defaultExpectation.expectationOrigins.origin, *m.ConcatDurationsMock.defaultExpectation.params)
+		}
+	}
+	// if func was set then invocations count should be greater than zero
+	if m.funcConcatDurations != nil && afterConcatDurationsCounter < 1 {
+		m.t.Errorf("Expected call to MediaProcessorMock.ConcatDurations at\n%s", m.funcConcatDurationsOrigin)
+	}
+
+	if !m.ConcatDurationsMock.invocationsDone() && afterConcatDurationsCounter > 0 {
+		m.t.Errorf("Expected %d calls to MediaProcessorMock.ConcatDurations at\n%s but found %d calls",
+			mm_atomic.LoadUint64(&m.ConcatDurationsMock.expectedInvocations), m.ConcatDurationsMock.expectedInvocationsOrigin, afterConcatDurationsCounter)
 	}
 }
 
@@ -1157,6 +1511,8 @@ func (m *MediaProcessorMock) MinimockFinish() {
 		if !m.minimockDone() {
 			m.MinimockAddChapterTagsInspect()
 
+			m.MinimockConcatDurationsInspect()
+
 			m.MinimockConcatenateInspect()
 
 			m.MinimockGetInfoInspect()
@@ -1184,6 +1540,7 @@ func (m *MediaProcessorMock) minimockDone() bool {
 	done := true
 	return done &&
 		m.MinimockAddChapterTagsDone() &&
+		m.MinimockConcatDurationsDone() &&
 		m.MinimockConcatenateDone() &&
 		m.MinimockGetInfoDone()
 }

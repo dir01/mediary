@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -563,4 +564,106 @@ func TestConcatenate_MP4AudioWithChapters(t *testing.T) {
 	if n, _ := strconv.Atoi(bitrate); n < minTranscodeBitrate {
 		t.Errorf("expected a bitrate of at least %d, got %s", minTranscodeBitrate, bitrate)
 	}
+}
+
+// TestConcatDurations_ChaptersStartAtTheirAudio verifies that the chapters do
+// not drift when many files are joined. Each file starts with a beep. The
+// chapter starts (sums of ConcatDurations) must be where the beeps are in the
+// result. Before, the chapters used the durations of the files themselves,
+// and each file added an error:
+//   - MP3 with a Xing header: 26 ms (the header frame becomes audio).
+//   - MP3 without a Xing header (VBR): about 1 s (ffprobe estimates the duration).
+//   - m4a: 0 to 23 ms (the padding of the last AAC frame).
+func TestConcatDurations_ChaptersStartAtTheirAudio(t *testing.T) {
+	const files = 8
+	for _, tc := range []struct {
+		name  string
+		ext   string
+		codec []string
+	}{
+		{"mp3 cbr", ".mp3", []string{"-c:a", "libmp3lame", "-b:a", "64k"}},
+		// Without an ID3 tag: in the joined bytes, the ffmpeg decoder cannot decode
+		// the first frame after the tag, and the beep in it is not found exactly.
+		{"mp3 vbr without xing", ".mp3", []string{"-c:a", "libmp3lame", "-q:a", "2", "-write_xing", "0", "-id3v2_version", "0"}},
+		{"m4a", ".m4a", []string{"-c:a", "aac", "-b:a", "64k"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			var filepaths []string
+			for i := range files {
+				fp := filepath.Join(dir, fmt.Sprintf("%02d%s", i, tc.ext))
+				// A beep of 0.2 s, then quiet noise (VBR needs a signal that changes).
+				args := append([]string{"-y",
+					"-f", "lavfi", "-i", fmt.Sprintf("sine=frequency=1000:duration=0.2,apad=whole_dur=%g", 3+0.37*float64(i)),
+					"-f", "lavfi", "-i", "anoisesrc=amplitude=0.002:duration=10",
+					"-filter_complex", "[0][1]amix=normalize=0:duration=first",
+				}, tc.codec...)
+				if out, err := exec.Command("ffmpeg", append(args, fp)...).CombinedOutput(); err != nil {
+					t.Fatalf("ffmpeg failed to generate test file: %v\n%s", err, out)
+				}
+				filepaths = append(filepaths, fp)
+			}
+
+			processor := &FFMpegMediaProcessor{log: testLogger}
+			resultPath, err := processor.Concatenate(context.Background(), filepaths, "copy")
+			if err != nil {
+				t.Fatalf("Concatenate failed: %v", err)
+			}
+			t.Cleanup(func() { _ = os.Remove(resultPath) })
+
+			durations, err := processor.ConcatDurations(context.Background(), filepaths)
+			if err != nil {
+				t.Fatalf("ConcatDurations failed: %v", err)
+			}
+			if len(durations) != files {
+				t.Fatalf("expected %d durations, got %d", files, len(durations))
+			}
+
+			// silencedetect also gives the end of the file after the last beep.
+			beeps := beepStarts(t, resultPath)
+			if len(beeps) < files {
+				t.Fatalf("expected %d beeps in the result, got %d: %v", files, len(beeps), beeps)
+			}
+			// The decoder skips the encoder delay (about 25 ms) only at the start
+			// of the result. In the next MP3 files, the beep comes after it. Thus,
+			// compare to chapter 1: the drift must not grow from chapter to chapter.
+			chapterStarts := make([]time.Duration, files)
+			for i := 1; i < files; i++ {
+				chapterStarts[i] = chapterStarts[i-1] + durations[i-1]
+			}
+			if delay := beeps[1] - chapterStarts[1]; delay < 0 || delay > 30*time.Millisecond {
+				t.Errorf("chapter 1 starts at %v, but its audio starts at %v", chapterStarts[1], beeps[1])
+			}
+			for i := 2; i < files; i++ {
+				drift := (beeps[i] - beeps[1]) - (chapterStarts[i] - chapterStarts[1])
+				if drift < -10*time.Millisecond || drift > 10*time.Millisecond {
+					t.Errorf("chapter %d starts at %v, but its audio starts at %v (drift %v from chapter 1)",
+						i, chapterStarts[i], beeps[i], drift)
+				}
+			}
+		})
+	}
+}
+
+// beepStarts returns the times where the sound starts after silence in the file.
+func beepStarts(t *testing.T, fp string) []time.Duration {
+	t.Helper()
+	out, err := exec.Command("ffmpeg", "-nostats", "-i", fp,
+		"-af", "silencedetect=noise=-40dB:duration=0.1", "-f", "null", "-").CombinedOutput()
+	if err != nil {
+		t.Fatalf("ffmpeg silencedetect failed: %v\n%s", err, out)
+	}
+	starts := []time.Duration{0} // the file starts with a beep
+	for _, line := range strings.Split(string(out), "\n") {
+		_, after, ok := strings.Cut(line, "silence_end: ")
+		if !ok {
+			continue
+		}
+		seconds, err := strconv.ParseFloat(strings.Fields(after)[0], 64)
+		if err != nil {
+			t.Fatalf("bad silencedetect line %q: %v", line, err)
+		}
+		starts = append(starts, time.Duration(seconds*float64(time.Second)))
+	}
+	return starts
 }

@@ -102,26 +102,6 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func(ctx context
 				fsFilepaths = append(fsFilepaths, filepathsMap[fp])
 			}
 
-			// collect per-file durations for chapter markers
-			var chapters []Chapter
-			var offset time.Duration
-			for i, variant := range params.Variants {
-				fileInfo, infoErr := svc.mediaProcessor.GetInfo(downloadCtx, fsFilepaths[i])
-				if infoErr != nil {
-					svc.log.Warn("failed to get duration for chapter, skipping chapter tags",
-						append(logAttrs, slog.Any("error", infoErr), slog.String("variant", variant))...)
-					chapters = nil
-					break
-				}
-				name := strings.TrimSuffix(filepath.Base(variant), filepath.Ext(variant))
-				chapters = append(chapters, Chapter{
-					Title:     name,
-					StartTime: offset,
-					EndTime:   offset + fileInfo.Duration,
-				})
-				offset += fileInfo.Duration
-			}
-
 			svc.log.Debug("starting conversion", logAttrs...)
 			concatCtx, concatCancel := context.WithTimeout(jobCtx, 1*time.Hour)
 			defer concatCancel()
@@ -154,7 +134,29 @@ func (svc *Service) newConcatenateFlow(jobID string, job *Job) (func(ctx context
 				}
 			}()
 
-			// write ID3 chapter tags into the concatenated file
+			// Write ID3 chapter tags into the concatenated file. Use the durations
+			// that the files have in the result, not their own durations: a small
+			// error in each file adds up, and the last chapters start too early.
+			var chapters []Chapter
+			durations, durErr := svc.mediaProcessor.ConcatDurations(concatCtx, fsFilepaths)
+			if durErr == nil && len(durations) != len(params.Variants) {
+				durErr = errCtx.Errorf("got %d durations for %d files", len(durations), len(params.Variants))
+			}
+			if durErr != nil {
+				svc.log.Warn("failed to measure durations for chapters, skipping chapter tags",
+					append(logAttrs, slog.Any("error", durErr))...)
+			} else {
+				var offset time.Duration
+				for i, variant := range params.Variants {
+					name := strings.TrimSuffix(filepath.Base(variant), filepath.Ext(variant))
+					chapters = append(chapters, Chapter{
+						Title:     name,
+						StartTime: offset,
+						EndTime:   offset + durations[i],
+					})
+					offset += durations[i]
+				}
+			}
 			if len(chapters) > 0 {
 				if chapErr := svc.mediaProcessor.AddChapterTags(concatCtx, resultFilepath, chapters); chapErr != nil {
 					svc.log.Warn("failed to add chapter tags, proceeding without chapters",

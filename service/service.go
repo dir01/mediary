@@ -173,6 +173,9 @@ type Storage interface {
 //go:generate  go tool github.com/gojuno/minimock/v3/cmd/minimock -i MediaProcessor -o ./mocks/media_processor_mock.go -g
 type MediaProcessor interface {
 	Concatenate(ctx context.Context, filepaths []string, audioCodec string) (resultFilepath string, err error)
+	// ConcatDurations returns the duration of each file in the result of
+	// Concatenate. The chapters of the result start at the sums of these durations.
+	ConcatDurations(ctx context.Context, filepaths []string) (durations []time.Duration, err error)
 	GetInfo(ctx context.Context, filepath string) (info *MediaInfo, err error)
 	AddChapterTags(ctx context.Context, filepath string, chapters []Chapter) error
 }

@@ -13,12 +13,10 @@ import (
 	"github.com/gojuno/minimock/v3"
 )
 
-// TestConcatenateFlow_GetInfoErrorSkipsChapters verifies that when GetInfo
-// returns an error for any file, chapter tags are skipped but concatenation
-// still succeeds. Before the fix, GetDuration used zaperr.Wrap(nil, ...)
-// which silently returned (0, nil), causing chapters with all-zero timestamps.
-// Now GetDuration uses ffprobe and properly reports errors.
-func TestConcatenateFlow_GetInfoErrorSkipsChapters(t *testing.T) {
+// TestConcatenateFlow_ConcatDurationsErrorSkipsChapters verifies that when
+// the durations for the chapters cannot be measured, chapter tags are skipped
+// but concatenation still succeeds.
+func TestConcatenateFlow_ConcatDurationsErrorSkipsChapters(t *testing.T) {
 	mc := minimock.NewController(t)
 
 	storage := mocks.NewStorageMock(mc)
@@ -70,24 +68,20 @@ func TestConcatenateFlow_GetInfoErrorSkipsChapters(t *testing.T) {
 	})
 
 	resultPath := "/tmp/result/output.mp3"
-	getInfoCalls := 0
-
-	// GetInfo fails on the second file (simulates ffprobe parse error).
-	// The first call (for individual file) returns an error;
-	// the last call (for the concatenated result) must succeed.
 	mp.GetInfoMock.Set(func(_ context.Context, fp string) (*service.MediaInfo, error) {
-		getInfoCalls++
-		if fp == resultPath {
-			return &service.MediaInfo{Duration: 270 * time.Second, FileLenBytes: 3072}, nil
+		if fp != resultPath {
+			t.Errorf("GetInfo called on unexpected file: %s", fp)
 		}
-		return nil, errors.New("ffprobe: failed to parse duration")
+		return &service.MediaInfo{Duration: 270 * time.Second, FileLenBytes: 3072}, nil
 	})
-
 	mp.ConcatenateMock.Set(func(_ context.Context, fps []string, codec string) (string, error) {
 		return resultPath, nil
 	})
+	mp.ConcatDurationsMock.Set(func(_ context.Context, fps []string) ([]time.Duration, error) {
+		return nil, errors.New("ffprobe: failed to read packets")
+	})
 
-	// AddChapterTags should NOT be called when GetInfo fails.
+	// AddChapterTags should NOT be called when ConcatDurations fails.
 	addChapterTagsCalled := false
 	mp.AddChapterTagsMock.Optional().Set(func(_ context.Context, fp string, chapters []service.Chapter) error {
 		addChapterTagsCalled = true
@@ -104,7 +98,7 @@ func TestConcatenateFlow_GetInfoErrorSkipsChapters(t *testing.T) {
 	}
 
 	if addChapterTagsCalled {
-		t.Error("AddChapterTags should not be called when GetInfo fails")
+		t.Error("AddChapterTags should not be called when ConcatDurations fails")
 	}
 }
 
@@ -170,23 +164,30 @@ func TestConcatenateFlow_ChapterTimestamps(t *testing.T) {
 		return fpMap, nil
 	})
 
-	// GetInfo returns known durations for individual files and for the result.
-	fileDurations := map[string]time.Duration{
+	// ConcatDurations returns the durations of the files in the result. The
+	// chapters must use them, not the durations of the files themselves.
+	concatDurations := map[string]time.Duration{
 		"/tmp/dl/intro.mp3":    1 * time.Minute,
 		"/tmp/dl/chapter1.mp3": 2 * time.Minute,
 		"/tmp/dl/chapter2.mp3": 90 * time.Second,
 	}
 	resultPath := "/tmp/result/output.mp3"
 	mp.GetInfoMock.Set(func(_ context.Context, fp string) (*service.MediaInfo, error) {
-		if d, ok := fileDurations[fp]; ok {
-			return &service.MediaInfo{Duration: d, FileLenBytes: 1024}, nil
+		if fp != resultPath {
+			t.Errorf("GetInfo called on unexpected file: %s", fp)
 		}
-		// result file
 		return &service.MediaInfo{Duration: 270 * time.Second, FileLenBytes: 3072}, nil
 	})
 
 	mp.ConcatenateMock.Set(func(_ context.Context, fps []string, codec string) (string, error) {
 		return resultPath, nil
+	})
+	mp.ConcatDurationsMock.Set(func(_ context.Context, fps []string) ([]time.Duration, error) {
+		durations := make([]time.Duration, len(fps))
+		for i, fp := range fps {
+			durations[i] = concatDurations[fp]
+		}
+		return durations, nil
 	})
 
 	// Capture chapters passed to AddChapterTags.
